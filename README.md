@@ -1,30 +1,86 @@
-# Tether
+<p align="center">
+  <img src="docs/readme/banner.svg" width="100%" alt="Tether: five surfaces, code, desktop, cowork, chat and design, all feeding one shared ledger.">
+</p>
 
-**Ideate once, never re-explain.** Tether is a local project ledger shared by Claude Code, Claude Desktop, Cowork, Chat and Design. It records what's decided, what's done, what's next and who has the ball.
+<p align="center">
+  <b>Ideate once. Never re-explain.</b><br>
+  <sub>A local project ledger shared by Claude Code, Claude Desktop, Cowork, Chat and Design. It records what was decided, what is done, what is next, and who has the ball, so every new session starts already knowing.</sub>
+</p>
 
-Each session starts with one compact context pack. On a synthetic 3-month project the pack is about 1.4k tokens, against about 12k for the full history. Closed tasks and superseded decisions are never re-read. They stay searchable.
+<p align="center">
+  <sub>
+    <a href="#overview">OVERVIEW</a> &nbsp;·&nbsp;
+    <a href="#quick-start">QUICK START</a> &nbsp;·&nbsp;
+    <a href="#the-context-pack">THE CONTEXT PACK</a> &nbsp;·&nbsp;
+    <a href="#install">INSTALL</a> &nbsp;·&nbsp;
+    <a href="#use">USE</a> &nbsp;·&nbsp;
+    <a href="#surfaces-without-mcp">SURFACES WITHOUT MCP</a> &nbsp;·&nbsp;
+    <a href="#two-macs">TWO MACS</a>
+  </sub>
+</p>
+
+<br>
+
+<table>
+  <tr>
+    <td><sub>TO RESUME A PROJECT</sub><br><b>~1.4k tokens, not ~12k</b></td>
+    <td><sub>STORAGE</sub><br><b>Local, on your machine</b></td>
+    <td><sub>INTERFACE</sub><br><b>MCP server + CLI</b></td>
+    <td><sub>SECRETS</sub><br><b>Refused on every write</b></td>
+    <td><sub>TESTS</sub><br><b>81</b></td>
+  </tr>
+</table>
+
+## Overview
+
+Every new AI session starts from zero, and you end up re-explaining the project each time. Tether fixes that with a small local ledger that every surface reads and writes: what was decided, what is done, what is next, and who has the ball.
+
+> [!TIP]
+> Run `tether doctor --deep` after installing. It starts the real server against a temporary store and drives it end to end, without touching your data.
+
+## Quick start
+
+```bash
+uv tool install -e .
+tether install                                     # registers the MCP server and hook
+tether init --goal "Sell mugs online by December"  # in your project folder
+```
+
+## How it works
+
+```mermaid
+flowchart LR
+    code["Claude Code"] <--> mcp
+    desk["Claude Desktop"] <--> mcp
+    cw["Cowork"] <--> mcp
+    mcp["Tether<br/>MCP server"] <--> db[("local ledger<br/>decisions · tasks<br/>handoffs · ideas")]
+    chat["Chat · Design"] -- "tether ctx / apply" --> db
+    db -- "one context pack<br/>~1.4k tokens" --> code
+    db <-. "journal per Mac<br/>iCloud" .-> mac2[("second Mac")]
+```
+
+
+## The context pack
+
+Every session opens with one compact pack: the goal, the status, what was handed to you, what changed since you were last here, open tasks, and active decisions. On a synthetic three-month project it is about 1.4k tokens, against about 12k for the full history. Closed tasks and superseded decisions are never re-read; they stay searchable.
 
 ```
 # Shop · tether [shop]
 Goal: Sell mugs online by December
 Status: Product page designed; cart next (2h ago)
-You are: code. Refs: t=task d=decision h=handoff.
+You are: code.
 
 ## Handed to you (1)
 - h3 from design (2h ago): Product page mockup
-  Hero, gallery, reviews. Final copy in link.
-  links: https://claude.ai/design/...
-  tasks: t4
+  Hero, gallery, reviews. Final copy in link.        tasks: t4
 
 ## Since code was last here
 - 2h ago design: decided: Serif headings, mono prices
 - 3h ago chat: added task: Annual pricing toggle
 
 ## Open tasks (5 open, 12 closed and hidden)
-For code:
 - t4 P1 Build product page
 - t7 [blocked] Stripe webhook — waiting on account approval
-For others:
 - t9 (design) Empty cart state
 
 ## Decisions (6 active, newest first)
@@ -34,124 +90,59 @@ For others:
 ## Install
 
 ```bash
-uv tool install -e .        # from this folder; PyPI after launch
-tether install              # registers with Claude Code (+ hook) and Claude Desktop
+uv tool install -e .        # from this folder
+tether install              # registers the MCP server and hook
+tether doctor --deep        # an end-to-end self-test in a temporary store; every line should say ok
 ```
 
-`tether install` merges only its own keys into your Claude config files and backs each file up first. Use `--dry-run` to preview the changes and `--uninstall` to remove them. Restart Claude Desktop afterwards. `tether doctor` checks everything.
-
-## Check it works
-
-```bash
-tether doctor --deep    # starts the real server in a temp store and drives it end to end
-```
-
-It never touches your real data. Every line should say `ok`.
+`tether install` merges only its own keys into your config files and backs each one up first. `--dry-run` previews the change, `--uninstall` removes it. `doctor --deep` never touches your real data.
 
 ## Use
 
 ```bash
 cd ~/code/shop
-tether init --goal "Sell mugs online by December"   # binds this folder
-claude                                                # the pack loads automatically
+tether init --goal "Sell mugs online by December"     # binds this folder to a project
 ```
 
-From there Claude does the bookkeeping. The server ships its rules:
-- record decisions as they are settled
-- add and tick tasks tagged with the surface that should do them
-- hand work across surfaces
-- update the status at milestones
+From there the bookkeeping happens as you work. The server ships its own rules: record decisions as they are settled, add and close tasks tagged with the surface that should do them, hand work across surfaces, and update the status at milestones. Nothing ever guesses which project it is in.
 
-In Claude Desktop or Cowork, say "load the shop project" once. Tether remembers it as the current project.
-
-### Chat and Design (no MCP)
-
-```bash
-tether ctx --for chat --copy      # paste into claude.ai Chat or Design
-# …work…  Claude ends with a TETHER UPDATE block; copy it, then:
-tether apply --paste
-```
-
-Optionally, mirror every project as markdown into a folder those surfaces can read, such as Google Drive:
-
-```bash
-tether mirror --dir ~/Google\ Drive/My\ Drive/tether
-```
-
-### CLI
+<details>
+<summary><b>The CLI</b></summary>
+<br>
 
 | | |
 |---|---|
-| `tether ls` | projects (`*` = this folder's / current) |
+| `tether ls` | projects |
 | `tether ctx [--for code\|chat\|design]` | the context pack |
-| `tether tasks [--all] [--for code]` | tasks |
-| `tether add "title" --for code -P 1` | new task |
-| `tether start\|done\|block\|drop t12 ["note"]` | task status |
-| `tether decide "text" --why "…" [--replaces d3]` | decision |
-| `tether status "…"` · `tether goal "…"` · `tether brief spec.md` | project fields |
-| `tether handoff design "title" --body "…" --link URL --task t4` | hand off |
-| `tether inbox` · `tether accept h3` · `tether deliver h3` | handoffs |
-| `tether search stripe` · `tether show d3` · `tether log` | history |
-| `tether use shop` | current project for folder-less clients |
-| `tether git install` | commits saying "fixes t12" / "closes t3, t4" mark those tasks done |
-| `tether doctor [--deep]` | check the install; `--deep` runs an end-to-end self-test |
+| `tether tasks` · `tether add "title" --for code -P 1` | tasks |
+| `tether start\|done\|block\|drop t12` | task status |
+| `tether decide "text" --why "…" [--replaces d3]` | a decision |
+| `tether handoff design "title" --body "…" --task t4` | hand work across |
+| `tether inbox` · `accept h3` · `deliver h3` | handoffs and unfiled ideas |
+| `tether search stripe` · `show d3` · `log` | history |
+| `tether remember` · `recall` · `attach` · `promote` | ideas, with or without a project |
+| `tether git install` | "fixes t12" in a commit closes the task |
+| `tether ui` | an editable live view on localhost |
 
-### MCP tools
+</details>
 
-`context`, `list_projects`, `start_project`, `update_project`, `record_decision`, `add_tasks`, `update_task`, `list_tasks`, `create_handoff`, `update_handoff`, `log_note`, `search`, `get`, plus the memory tools `remember`, `recall`, `recent_memories`, `attach_memory`.
+## Surfaces without MCP
 
-No tool ever guesses a project: pass `project=<slug>` or run in a bound folder. A chat with no project uses `remember` and `recall`.
-
-## Ideas, Code's tasks and the live view (v0.2)
+For Chat and Design, copy the pack in and the update out:
 
 ```bash
-tether remember "Reading app" --body "swipe to save quotes" --tags reading   # any project, or none
-tether recall quotes            # search ideas + every project
-tether inbox                    # handoffs + unfiled ideas (with "probably belongs to X")
-tether attach m3 query          # file an idea under a project
-tether promote t42              # turn one of Claude Code's own tasks into a project task
-tether ui                       # editable live view at http://127.0.0.1:7878
-tether watch                    # read-only terminal view
-tether setup chat               # phone/web Chat -> Drive "Tether Inbox" -> Code
-tether inbox import <folder>    # import ideas Chat saved as markdown files
-tether config notify off        # macOS notifications
+tether ctx --for chat --copy      # paste it into the conversation
+tether apply --paste              # the conversation ends with an update block; apply it
 ```
 
-`tether install` also adds a PostToolUse hook that mirrors Claude Code's own task list
-(`TaskCreate`/`TaskUpdate`/`TodoWrite`) into Tether as *session tasks*, in folders bound
-with `tether init`. Anything that looks like an API key, token or password is refused on
-every write path.
+`tether mirror --dir <folder>` writes every project as markdown into a folder those surfaces can read, such as Google Drive.
 
 ## Two Macs
 
 ```bash
-tether sync setup        # on each Mac; uses iCloud Drive/Tether by default (--dir to change)
-tether sync              # push + pull now, then show status (it also happens automatically)
-tether sync status
-tether sync off
+tether sync setup        # on each Mac; iCloud Drive by default
 ```
 
-Each Mac keeps its own database and appends its changes to its own journal file in the
-shared folder; nothing writes the same file from two machines, so iCloud never sees a
-conflict. Changes merge field by field (newest edit wins per field), so finishing a task
-on one Mac and renaming it on the other both survive. Folder bindings stay per Mac: if
-the project lives elsewhere on the second Mac, run `tether init` there and it binds the
-synced project instead of creating a duplicate.
+Each Mac keeps its own database and appends only to its own journal in the shared folder. Nothing writes the same file from two machines, so iCloud never sees a conflict. Changes merge field by field, newest edit wins per field, so finishing a task on one Mac and renaming it on the other both survive.
 
-Limits: if iCloud "Optimize Mac Storage" evicts a journal, that Mac's changes wait until
-iCloud downloads it again. Journals grow over time; compaction isn't built yet.
-
-## How it works
-
-- **Storage:** one SQLite file at `~/.tether/tether.db` (override with `TETHER_HOME`).
-- **Surface tagging:** each client starts the server with `TETHER_SURFACE` set, so every write records who made it and every pack is tailored to whoever reads it.
-- **More detail:** see [docs/PLAN.md](docs/PLAN.md) for the architecture and roadmap, and [docs/RESEARCH.md](docs/RESEARCH.md) for how Tether compares to existing tools.
-
-## Develop
-
-```bash
-uv venv && uv pip install -e ".[dev]"
-.venv/bin/pytest
-```
-
-MIT licensed.
+<sub>MIT.</sub>
