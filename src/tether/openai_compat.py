@@ -107,12 +107,17 @@ class OpenAICompatClient:
             {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"})
         for attempt in range(5):
             try:
-                with urllib.request.urlopen(req, timeout=120) as r:
+                with urllib.request.urlopen(req, timeout=240) as r:
                     return json.load(r)
-            except urllib.error.HTTPError as e:
+            except urllib.error.HTTPError as e:  # must precede URLError, its parent class
                 if e.code in (429, 500, 502, 503) and attempt < 4:
                     time.sleep(2 ** attempt)  # free tier rate limits
                     continue
                 raise RuntimeError(f"HTTP {e.code} from {self.base_url}: "
                                    f"{e.read().decode(errors='replace')[:300]}") from e
+            except (TimeoutError, urllib.error.URLError) as e:  # slow free tier, flaky network
+                if attempt < 4:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise RuntimeError(f"{type(e).__name__} calling {self.base_url}: {e}") from e
         raise RuntimeError("unreachable")
