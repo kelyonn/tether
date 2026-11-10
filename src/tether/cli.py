@@ -171,7 +171,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = cmd("eval", cmd_eval, "measure how well Claude follows Tether's rules (calls the "
             "Claude API; costs money)")
-    s.add_argument("--model", default="claude-opus-5-5")
+    s.add_argument("--provider", default="anthropic", choices=["anthropic", "nvidia"],
+                   help="nvidia = free NIM API (needs NVIDIA_API_KEY); tests a non-Claude model")
+    s.add_argument("--model", default=None)
     s.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
     s.add_argument("--runs", type=int, default=1, help="runs per scenario")
     s.add_argument("--only", action="append", help="scenario name (repeatable)")
@@ -678,14 +680,21 @@ def cmd_eval(args) -> int:
             rules = sorted({c.get("rule", c["kind"]) for c in scn["checks"]})
             print(f"{scn['name']:24} {scn.get('surface', 'chat'):6} {', '.join(rules)}")
         return 0
-    try:
-        import anthropic
-    except ImportError as e:
-        raise TetherError('the eval needs the Anthropic SDK: pip install -e ".[eval]"') from e
     import anyio
+    if args.provider == "nvidia":
+        from tether import openai_compat
+        args.model = args.model or openai_compat.NVIDIA_MODEL
+        make_client = openai_compat.OpenAICompatClient
+    else:
+        try:
+            import anthropic
+        except ImportError as e:
+            raise TetherError('the eval needs the Anthropic SDK: pip install -e ".[eval]"') from e
+        args.model = args.model or evalkit.DEFAULT_MODEL
+        make_client = anthropic.AsyncAnthropic
 
     async def go():
-        async with anthropic.AsyncAnthropic() as client:
+        async with make_client() as client:
             return await evalkit.run_all(client, args.model, args.effort, args.only, args.runs,
                                          path)
     results = anyio.run(go)

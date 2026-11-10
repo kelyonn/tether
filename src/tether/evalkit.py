@@ -318,7 +318,7 @@ async def run_all(client: Any, model: str = DEFAULT_MODEL, effort: str = "medium
 def save(results: list[RunResult], summary: dict, model: str, effort: str,
          directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{time.strftime('%Y%m%d-%H%M%S')}-{model}-{effort}.json"
+    path = directory / f"{time.strftime('%Y%m%d-%H%M%S')}-{model.replace('/', '_')}-{effort}.json"
     path.write_text(json.dumps({
         "model": model, "effort": effort, "summary": summary,
         "results": [{"scenario": r.scenario, "passed": r.passed, "error": r.error,
