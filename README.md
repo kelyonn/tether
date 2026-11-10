@@ -1,8 +1,14 @@
 # Tether
 
-**Ideate once, never re-explain.** Tether is a local project ledger shared by Claude Code, Claude Desktop, Cowork, Chat and Design. It records what's decided, what's done, what's next and who has the ball.
+**Ideate anywhere. Claude Code already knows.** Tether is a local memory and project ledger shared by every Claude surface. Talk through an idea in Claude on your phone or the web, and it is saved and sorted automatically. When you open Claude Code, it already has that idea, plus what is decided, what is done, what is next and who has the ball.
 
-Each session starts with one compact context pack. On a synthetic 3-month project the pack is about 1.4k tokens, against about 12k for the full history. Closed tasks and superseded decisions are never re-read. They stay searchable.
+- **Memory:** ideas, research and specs saved from any chat, deduplicated and filed under a project when one fits.
+- **Ledger:** each project's goal, status, decisions (that can be superseded), tasks tagged by the surface that should do them, and handoffs between surfaces.
+- **Live view:** a local, editable page showing every project, what Code is doing now, the ideas inbox and the activity feed.
+- **Two Macs:** an append-only journal in iCloud Drive keeps them in step.
+- **Local and private:** one SQLite file, no cloud service, no AI of its own, and secrets are blocked from ever being stored.
+
+Each Claude Code session starts with a short summary instead of the full history. On a synthetic 3-month project it is about 1.4k tokens, against about 12k for everything. Closed tasks and superseded decisions are not re-read, but stay searchable. Here is one:
 
 ```
 # Shop · tether [shop]

@@ -30,7 +30,7 @@ from tether.server import INSTRUCTIONS, build_server
 from tether.store import Store
 
 DEFAULT_MODEL = "claude-opus-5-5"
-SCENARIOS = Path(__file__).resolve().parents[2] / "evals" / "scenarios.json"
+SCENARIOS = Path(__file__).with_name("eval_scenarios.json")  # ships inside the package
 MAX_TURNS = 12  # model calls per user message
 
 

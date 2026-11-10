@@ -177,7 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
     s.add_argument("--runs", type=int, default=1, help="runs per scenario")
     s.add_argument("--only", action="append", help="scenario name (repeatable)")
-    s.add_argument("--scenarios", help="scenarios file (default: evals/scenarios.json)")
+    s.add_argument("--scenarios", help="scenarios file (default: the bundled set)")
     s.add_argument("--out", default="evals/results", help="where to save the JSON report")
     s.add_argument("--list", action="store_true", help="list scenarios and exit")
 

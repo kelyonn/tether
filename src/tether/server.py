@@ -54,10 +54,13 @@ one-line `status` describing where things stand now.
 the user says to remember it, call `remember` on your own, without asking. Size it to the \
 content: a passing thought is two lines, a long design session is a full write-up \
 (options weighed, decisions, open questions, next steps). Always give a one-line \
-`summary`, a `kind` and a few `tags`. Before saving, call `recall` with the topic; if a \
-matching idea exists, pass its id as `update_of` and add to it instead of creating a \
-duplicate. Skip small talk and one-off questions. If no project fits, leave it unfiled; \
-never invent a project.
+`summary`, a `kind` and a few `tags`. Before saving, call `recall` with the topic. If it \
+returns a matching idea (same subject, even if worded differently), you MUST pass its id \
+as `update_of`: never save a second note on a topic that already has one. Skip small \
+talk and one-off questions. If no project fits, leave it unfiled. Never call \
+`start_project` on your own: only when the user explicitly asks to start or create a \
+project. Ideas, decisions and status for something that is not an existing project are \
+not a reason to make one.
 7. Which project: never assume. Pass `project=<slug>` from the context header, or call \
 `recall`/`list_projects` when unsure. A chat with no project is normal: use `remember`.
 Be terse in everything you record. Refer to items as t12 (task), d3 (decision), h2 \
@@ -127,7 +130,8 @@ def build_server(store: Store | None = None) -> MCPServer:
 
     @server.tool(annotations=WRITE, structured_output=False)
     async def start_project(name: str, goal: str = "", path: str | None = None) -> str:
-        """Create a project. `path` binds it to a folder so Claude Code sessions there pick
+        """Create a project, ONLY when the user explicitly asks for one. Never to file an
+        idea or because a topic sounds project-like (use `remember` for that). `path` binds it to a folder so Claude Code sessions there pick
         it automatically (defaults to the current folder when running in Claude Code)."""
         if path is None and config.current_surface() == "code":
             path = _working_dir()
@@ -228,7 +232,8 @@ def build_server(store: Store | None = None) -> MCPServer:
                        tags: list[str] | None = None, project: str | None = None,
                        update_of: str | None = None, append: bool = True) -> str:
         """Save an idea, plan, research or spec so any other Claude surface can find it
-        later. Works with no project. To add to an existing one pass `update_of` (m4);
+        later. Works with no project. If `recall` found an idea on the same topic you must
+        pass its id as `update_of` (m4) instead of saving a new one;
         `append` adds the body below the old one, otherwise it replaces it. Near-duplicates
         are merged automatically; looser matches come back as "did you mean"."""
         sf = surface_of(None)
