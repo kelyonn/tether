@@ -50,7 +50,9 @@ def snapshot(store: Store) -> dict:
             "events": [{"id": e["id"], "ts": e["ts"], "ago": ago(e["ts"]),
                         "surface": e["surface"], "text": e["summary"], "kind": e["kind"],
                         "ref": e["ref"], "project": p["slug"], "machine": e["machine"]}
-                       for e in store.events(pid, limit=60) if e["kind"] != "session-task"][:30],
+                       for e in sorted(store.events(pid, limit=60), key=lambda e: (e["ts"], e["id"]),
+                                       reverse=True)  # by time: other Macs' ids interleave
+                       if e["kind"] != "session-task"][:30],
         })
     box = store.inbox(limit=60)
     sync_info = None
@@ -144,6 +146,16 @@ def _bad(msg: str):
 def page(token: str) -> bytes:
     html = resources.files("tether").joinpath("static/index.html").read_text()
     return html.replace("__TOKEN__", token).encode()
+
+
+def already_running(port: int = PORT) -> bool:
+    """True if a Tether live view already answers on this port."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/marker", timeout=0.5) as r:
+            return r.status == 200 and r.read(1) == b"["
+    except OSError:
+        return False
 
 
 def serve(port: int = PORT, open_browser: bool = True) -> None:

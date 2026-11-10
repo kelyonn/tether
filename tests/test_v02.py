@@ -212,3 +212,29 @@ def test_ui_http_requires_token_and_local_host(tmp_path, monkeypatch):
         assert e.value.code == 403
     finally:
         holder["srv"].shutdown()
+
+
+def test_service_plist_and_launchctl_calls(monkeypatch, tmp_path):
+    import plistlib
+    import sys as _sys
+    from tether import service
+    if _sys.platform != "darwin":
+        pytest.skip("launchd is macOS only")
+    calls = []
+
+    class R:
+        returncode, stdout, stderr = 0, "state = running", ""
+
+    monkeypatch.setattr(service.subprocess, "run", lambda cmd, **k: calls.append(cmd) or R())
+    path = service.install(7999)
+    data = plistlib.loads(path.read_bytes())
+    assert data["Label"] == service.LABEL and data["KeepAlive"] is True
+    assert data["ProgramArguments"][-3:] == ["--no-open", "--port", "7999"]
+    assert data["EnvironmentVariables"]["TETHER_HOME"]  # the test's isolated store
+    assert ["bootstrap" in c for c in calls].count(True) == 1
+    assert service.status() == "running"
+    assert service.uninstall() and not path.exists()
+
+
+def test_ui_already_running_detection():
+    assert ui.already_running(1) is False

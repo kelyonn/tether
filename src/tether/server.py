@@ -232,13 +232,14 @@ def build_server(store: Store | None = None) -> MCPServer:
         `append` adds the body below the old one, otherwise it replaces it. Near-duplicates
         are merged automatically; looser matches come back as "did you mean"."""
         sf = surface_of(None)
+        # A project only when named, or when this folder is bound to one. Never the
+        # "only project" fallback: an unrelated idea must not land in it.
         pid = None
-        if project or _working_dir():
-            try:
-                pid = store.resolve_project(project, cwd=_working_dir(), use_current=False)["id"]
-            except TetherError as e:
-                if project:
-                    raise ToolError(str(e)) from e
+        if project:
+            pid = resolve(project)
+        elif _working_dir():
+            bound = store.project_for_path(_working_dir())
+            pid = bound["id"] if bound else None
         tag_s = ",".join(tags or [])
         if update_of:
             mid = run(parse_memory_id, update_of)

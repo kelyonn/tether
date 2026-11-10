@@ -169,9 +169,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = cmd("watch", cmd_watch, "live terminal view (read-only)")
 
+    s = cmd("eval", cmd_eval, "measure how well Claude follows Tether's rules (calls the "
+            "Claude API; costs money)")
+    s.add_argument("--model", default="claude-opus-5-5")
+    s.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
+    s.add_argument("--runs", type=int, default=1, help="runs per scenario")
+    s.add_argument("--only", action="append", help="scenario name (repeatable)")
+    s.add_argument("--scenarios", help="scenarios file (default: evals/scenarios.json)")
+    s.add_argument("--out", default="evals/results", help="where to save the JSON report")
+    s.add_argument("--list", action="store_true", help="list scenarios and exit")
+
+    s = cmd("service", cmd_service, "keep the live view running in the background at login "
+            "(macOS)")
+    s.add_argument("action", choices=["install", "uninstall", "status"])
+    s.add_argument("--port", type=int, default=7878)
+
     s = cmd("sync", cmd_sync, "two-Mac sync through a shared folder (iCloud Drive by default)")
-    s.add_argument("action", nargs="?", default="now", choices=["now", "setup", "status", "off"],
-                   help="now (default): push and pull; setup: turn on; status; off")
+    s.add_argument("action", nargs="?", default="now", choices=["now", "setup", "status", "compact", "off"],
+                   help="now (default): push and pull; setup: turn on; status; "
+                        "compact: shrink this Mac's journal; off")
     s.add_argument("--dir", help="setup: shared folder (default: iCloud Drive/Tether)")
 
     s = cmd("accept", cmd_handoff_status, "accept a handoff")
@@ -292,6 +308,8 @@ def cmd_doctor(args) -> int:
     md = mirror.mirror_dir()
     print(f"mirror: {md or 'off'}")
     print("sync: " + (_sync_line(store) if store.syncer else "off (tether sync setup)"))
+    from tether import service
+    print(f"live view service: {service.status()}")
     bad = False
     for r in install.status():
         print(f"{r.client:18} {r.action:10} {r.detail}")
@@ -619,6 +637,11 @@ def cmd_sync(args) -> int:
         raise TetherError("sync is off. Turn it on with: tether sync setup")
     if args.action == "now":
         print(f"Pushed {store.flush()} changes, merged {store.pull()} from other Macs.")
+    if args.action == "compact":
+        before, after = store.syncer.compact()
+        print(f"Compacted this Mac's journal: {before:,} → {after:,} bytes. Other Macs "
+              "re-read it automatically.")
+        return 0
     st = store.syncer.status()
     print(f"this Mac: {st['machine']} · folder: {st['dir']}")
     print(f"pending: {st['pending']} · journal: {st['journal_bytes']} bytes")
@@ -636,7 +659,53 @@ def cmd_sync(args) -> int:
 
 def cmd_ui(args) -> int:
     from tether import ui
+    if ui.already_running(args.port):
+        url = f"http://127.0.0.1:{args.port}"
+        print(f"The live view is already running (background service?): {url}")
+        if not args.no_open:
+            import webbrowser
+            webbrowser.open(url)
+        return 0
     ui.serve(args.port, open_browser=not args.no_open)
+    return 0
+
+
+def cmd_eval(args) -> int:
+    from tether import evalkit
+    path = Path(args.scenarios) if args.scenarios else None
+    if args.list:
+        for scn in evalkit.load_scenarios(path):
+            rules = sorted({c.get("rule", c["kind"]) for c in scn["checks"]})
+            print(f"{scn['name']:24} {scn.get('surface', 'chat'):6} {', '.join(rules)}")
+        return 0
+    try:
+        import anthropic
+    except ImportError as e:
+        raise TetherError('the eval needs the Anthropic SDK: pip install -e ".[eval]"') from e
+    import anyio
+
+    async def go():
+        async with anthropic.AsyncAnthropic() as client:
+            return await evalkit.run_all(client, args.model, args.effort, args.only, args.runs,
+                                         path)
+    results = anyio.run(go)
+    summary = evalkit.summarize(results)
+    print(evalkit.report(results, summary))
+    saved = evalkit.save(results, summary, args.model, args.effort, Path(args.out))
+    print(f"\nSaved {saved}")
+    return 0 if summary["overall"] >= 0.8 else 1
+
+
+def cmd_service(args) -> int:
+    from tether import service
+    if args.action == "install":
+        path = service.install(args.port)
+        print(f"Live view now starts at login and stays up: http://127.0.0.1:{args.port}")
+        print(f"(launchd agent {path}; log in {config.home() / 'ui.log'})")
+    elif args.action == "uninstall":
+        print("Removed." if service.uninstall() else "Not installed.")
+    else:
+        print(f"live view service: {service.status()}")
     return 0
 
 

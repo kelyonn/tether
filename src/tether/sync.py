@@ -46,6 +46,7 @@ FKS: dict[str, dict[str, str]] = {
     "events": {"project_id": "projects"},
 }
 PULL_EVERY = 3.0  # seconds, for maybe_pull()
+COMPACT_AT = 8 * 1024 * 1024  # bytes; a journal this big (and 3x its last compacted size) is rewritten
 
 
 def migration_sql() -> str:
@@ -76,6 +77,26 @@ def migration_sql() -> str:
               f"WHEN (SELECT applying FROM sync_flags) = 0 BEGIN "
               f"INSERT OR IGNORE INTO sync_outbox (tbl, rid) VALUES ('{t}', NEW.id); END;"]
     return "\n".join(L)
+
+
+def _line(op: dict) -> str:
+    return json.dumps(op, separators=(",", ":")) + "\n"
+
+
+def _header(compacted: bool = False) -> str:
+    """First line of every journal. A new id means 'this file was rewritten'."""
+    h = {"journal": uuid.uuid4().hex, "format": 1}
+    if compacted:
+        h["compacted"] = int(time.time())
+    return json.dumps(h, separators=(",", ":"))
+
+
+def _journal_id(first_line: bytes) -> str | None:
+    try:
+        h = json.loads(first_line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return h.get("journal") if isinstance(h, dict) else None
 
 
 def default_dir() -> Path:
@@ -211,7 +232,9 @@ class Syncer:
             if ops:
                 with open(path, "a", encoding="utf-8") as f:
                     fcntl.flock(f, fcntl.LOCK_EX)
-                    f.write("".join(json.dumps(op, separators=(",", ":")) + "\n" for op in ops))
+                    if f.tell() == 0:
+                        f.write(_header() + "\n")
+                    f.write("".join(_line(op) for op in ops))
                     f.flush()
                     os.fsync(f.fileno())
             self.db.execute("DELETE FROM sync_outbox")
@@ -219,7 +242,63 @@ class Syncer:
         except BaseException:
             self.db.execute("ROLLBACK")
             raise
+        if ops and self._needs_compaction(path):
+            self.compact()
         return len(ops)
+
+    # -- compaction -------------------------------------------------------------------
+
+    def _needs_compaction(self, path: Path) -> bool:
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return False
+        last = int(self._state("compacted_bytes") or 0)
+        return size > max(COMPACT_AT, 3 * last)
+
+    def compact(self) -> tuple[int, int]:
+        """Rewrite this Mac's journal as one snapshot of the current state, keeping every
+        field's original clock so merging stays correct. Returns (bytes before, after).
+
+        The new file starts with a fresh journal id; other Macs notice the id changed and
+        re-read it from the top. Re-applying is harmless: a field only changes when its
+        clock is newer than the one already merged. A snapshot holds everything, so a new
+        Mac can bootstrap from any single journal."""
+        self.flush()
+        path = self.journals / f"{self.machine}.jsonl"
+        before = path.stat().st_size if path.exists() else 0
+        self.journals.mkdir(parents=True, exist_ok=True)
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            ops = []
+            for tbl in TABLES:
+                for row in self.db.execute(f"SELECT * FROM {tbl} WHERE uid IS NOT NULL").fetchall():
+                    data = self._export(tbl, row)
+                    known = dict(self.db.execute(
+                        "SELECT field, ts FROM sync_fields WHERE tbl=? AND uid=?",
+                        (tbl, row["uid"])).fetchall())
+                    ft = {k: known.get(k) or self._tick() for k in data}
+                    top = max(ft.values())
+                    op = {"ts": top, "t": tbl, "u": row["uid"], "id": row["id"], "f": data}
+                    odd = {k: v for k, v in ft.items() if v != top}  # only clocks that differ
+                    if odd:
+                        op["ft"] = odd
+                    ops.append(op)
+            ops.sort(key=lambda o: o["ts"])
+            tmp = path.with_name(f".{path.name}.compact")
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(_header(compacted=True) + "\n")
+                f.write("".join(_line(op) for op in ops))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+            after = path.stat().st_size
+            self._set_state("compacted_bytes", str(after))
+            self.db.execute("COMMIT")
+        except BaseException:
+            self.db.execute("ROLLBACK")
+            raise
+        return before, after
 
     def queue_everything(self) -> None:
         """Queue every row this machine has never exported or received (first setup).
@@ -243,23 +322,27 @@ class Syncer:
             return 0
         batch: list[tuple[dict, str]] = []
         new_pos: dict[str, int] = {}
+        journal_ids: dict[str, str | None] = {}
         for f in sorted(self.journals.glob("*.jsonl")):
             m = f.stem
             if m == self.machine:
                 continue
-            row = self.db.execute("SELECT pos FROM sync_offsets WHERE machine=?", (m,)).fetchone()
-            pos = row[0] if row else 0
+            row = self.db.execute("SELECT pos, files_seen FROM sync_offsets WHERE machine=?",
+                                  (m,)).fetchone()
+            pos, seen_id = (row[0], row[1]) if row else (0, None)
             try:
                 size = f.stat().st_size
-                if size < pos:  # journal was replaced (re-created folder): read from start
-                    pos = 0
-                if size == pos:
-                    continue
                 with open(f, "rb") as fh:
+                    jid = _journal_id(fh.readline())
+                    if jid != seen_id or size < pos:
+                        pos = 0  # compacted or re-created: read the new file from the top
+                    if size == pos:
+                        continue
                     fh.seek(pos)
                     data = fh.read()
             except OSError:
                 continue  # iCloud may not have downloaded it yet
+            journal_ids[m] = jid
             end = data.rfind(b"\n") + 1  # only complete lines; a half-synced tail waits
             for line in data[:end].splitlines():
                 try:
@@ -269,6 +352,7 @@ class Syncer:
             new_pos[m] = pos + end
         if not new_pos:
             return 0
+        batch = [b for b in batch if "t" in b[0]]  # drop journal headers
         batch.sort(key=lambda x: x[0].get("ts", ""))
         applied = 0
         self.db.execute("BEGIN IMMEDIATE")
@@ -277,15 +361,18 @@ class Syncer:
             self._retry: list[dict] = []
             for op, _m in batch:
                 applied += self._apply(op)
-                self._observe(op.get("ts", ""))
+                for t in [op.get("ts", ""), *(op.get("ft") or {}).values()]:
+                    self._observe(t)
             for op in self._retry:  # references to rows that arrived later in the batch
                 self._fix_refs(op)
-            last = {m: max((op["ts"] for op, mm in batch if mm == m), default=None) for m in new_pos}
+            last = {m: max((op["ts"] for op, mm in batch if mm == m and "ts" in op), default=None)
+                    for m in new_pos}
             for m, p in new_pos.items():
                 self.db.execute(
-                    "INSERT INTO sync_offsets (machine, pos, last_ts) VALUES (?,?,?) "
-                    "ON CONFLICT(machine) DO UPDATE SET pos=excluded.pos, "
-                    "last_ts=coalesce(excluded.last_ts, sync_offsets.last_ts)", (m, p, last[m]))
+                    "INSERT INTO sync_offsets (machine, pos, last_ts, files_seen) VALUES (?,?,?,?) "
+                    "ON CONFLICT(machine) DO UPDATE SET pos=excluded.pos, files_seen=excluded.files_seen, "
+                    "last_ts=coalesce(excluded.last_ts, sync_offsets.last_ts)",
+                    (m, p, last[m], journal_ids.get(m)))
             self._set_state("last_pull", str(int(time.time())))
             self.db.execute("UPDATE sync_flags SET applying=0")
             self.db.execute("COMMIT")
@@ -311,14 +398,15 @@ class Syncer:
                 rid = same[0]
                 self.db.execute("INSERT OR REPLACE INTO sync_alias (tbl, uid, local_id) "
                                 "VALUES (?,?,?)", (tbl, uid, rid))
+        fts = {k: (op.get("ft") or {}).get(k, ts) for k in fields}
         if rid is None:
-            return self._insert(tbl, uid, op.get("id"), fields, ts)
+            return self._insert(tbl, uid, op.get("id"), fields, fts)
         if tbl == "projects":
             fields = {k: v for k, v in fields.items() if k != "root_path"}  # bindings are per Mac
         luid = self._uid_of(tbl, rid)
         known = dict(self.db.execute("SELECT field, ts FROM sync_fields WHERE tbl=? AND uid=?",
                                      (tbl, luid)).fetchall())
-        win = {k: v for k, v in fields.items() if ts > known.get(k, "")}
+        win = {k: v for k, v in fields.items() if fts[k] > known.get(k, "")}
         if not win:
             return 0
         vals = {k: self._import_value(tbl, k, v) for k, v in win.items()}
@@ -328,7 +416,7 @@ class Syncer:
         if vals:
             sets = ", ".join(f"{k}=?" for k in vals)
             self.db.execute(f"UPDATE {tbl} SET {sets} WHERE id=?", (*vals.values(), rid))
-        self._record(tbl, luid, rid, win.keys(), ts)
+        self._record(tbl, luid, rid, {k: fts[k] for k in win})
         return 1
 
     def _unresolved(self, tbl: str, fields: dict) -> bool:
@@ -341,7 +429,7 @@ class Syncer:
         return False
 
     def _fix_refs(self, op: dict) -> None:
-        tbl, f, ts = op["t"], op["f"], op["ts"]
+        tbl, f = op["t"], op["f"]
         rid = self._id_of(tbl, op["u"])
         if rid is None:
             return
@@ -352,11 +440,12 @@ class Syncer:
             cur = self.db.execute("SELECT ts FROM sync_fields WHERE tbl=? AND uid=? AND field=?",
                                   (tbl, luid, k)).fetchone()
             val = self._import_value(tbl, k, v)
-            if cur and cur[0] == ts and val is not None:
+            if cur and cur[0] == (op.get("ft") or {}).get(k, op["ts"]) and val is not None:
                 self.db.execute(f"UPDATE {tbl} SET {k}=? WHERE id=?", (val, rid))
-        self._record(tbl, luid, rid, [], ts)
+        self._record(tbl, luid, rid, {})
 
-    def _insert(self, tbl: str, uid: str, hint: int | None, fields: dict, ts: str) -> int:
+    def _insert(self, tbl: str, uid: str, hint: int | None, fields: dict,
+                fts: dict[str, str]) -> int:
         vals = {k: self._import_value(tbl, k, v) for k, v in fields.items()}
         if tbl not in ("projects", "memories") and fields.get("project_id") and \
                 vals.get("project_id") is None:
@@ -381,14 +470,16 @@ class Syncer:
                                   tuple(vals.values()))
         except sqlite3.IntegrityError:
             return 0  # incomplete row (e.g. a journal that starts mid-history); skip
-        self._record(tbl, uid, cur.lastrowid, fields.keys(), ts)
+        self._record(tbl, uid, cur.lastrowid, fts)
         return 1
 
-    def _record(self, tbl: str, uid: str, rid: int, fields: Any, ts: str) -> None:
+    def _record(self, tbl: str, uid: str, rid: int, fields: dict[str, str]) -> None:
+        """Remember each applied field's clock, and refresh the shadow so the merged
+        values are not exported back as local changes."""
         self.db.executemany(
             "INSERT INTO sync_fields (tbl, uid, field, ts) VALUES (?,?,?,?) "
             "ON CONFLICT(tbl, uid, field) DO UPDATE SET ts=excluded.ts "
-            "WHERE excluded.ts > sync_fields.ts", [(tbl, uid, k, ts) for k in fields])
+            "WHERE excluded.ts > sync_fields.ts", [(tbl, uid, k, t) for k, t in fields.items()])
         row = self.db.execute(f"SELECT * FROM {tbl} WHERE id=?", (rid,)).fetchone()
         if row is not None:
             self.db.execute("INSERT INTO sync_shadow (tbl, uid, data) VALUES (?,?,?) "

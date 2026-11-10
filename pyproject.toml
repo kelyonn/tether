@@ -20,6 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# `tether eval` (rule-following eval against the Claude API)
+eval = ["anthropic>=2.6,<3"]
 
 [project.scripts]
 tether = "tether.cli:main"

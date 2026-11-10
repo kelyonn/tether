@@ -423,7 +423,7 @@ function viewMissing(){ return `<div class="page"><div class="crumb"><a href="#/
 function viewHome(){
   const ps = S.projects, live = ps.filter(p=>p.code_doing);
   const sub = ps.length ? [plural(ps.length,"project"), live.length?`Claude Code active in ${live.map(p=>esc(p.name)).join(", ")}`:null, S.inbox.length?plural(S.inbox.length,"unfiled idea"):null].filter(Boolean).join(" · ") : "Nothing here yet.";
-  const events = ps.flatMap(p=>p.events).sort((a,b)=>b.id-a.id).slice(0,18);
+  const events = ps.flatMap(p=>p.events).sort((a,b)=>b.ts.localeCompare(a.ts)||b.id-a.id).slice(0,18);
   return `<div class="page">
     <h1>Overview</h1><div class="h-sub">${sub}</div>
     ${ps.length ? `<div class="pcards">${ps.map(pcard).join("")}</div>` : emptyStart()}

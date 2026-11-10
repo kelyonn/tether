@@ -61,6 +61,12 @@ def run() -> list[Check]:
                 await call("update_task", {"task": "t1", "status": "done", "note": "ok"})
                 out["context"] = await call("context", {})
                 out["search"] = await call("search", {"query": "sqlite"})
+                out["remember"] = await call("remember", {
+                    "title": "Selftest reading app", "body": "swipe to save quotes",
+                    "summary": "quote saver", "project": "selftest-app"})
+                out["remember2"] = await call("remember", {
+                    "title": "Selftest reading app", "body": "kindle import"})
+                out["recall"] = await call("recall", {"query": "quotes"})
             return out
 
         try:
@@ -82,6 +88,11 @@ def run() -> list[Check]:
                             and "1 closed and hidden" in ctx, ""))
         checks.append(Check("search finds history", "Use SQLite" in got["search"], ""))
 
+        checks.append(Check("ideas save, merge duplicates and recall",
+                            got["remember"].startswith("Saved m")
+                            and "Merged into existing" in got["remember2"]
+                            and "Selftest reading app" in got["recall"], got["remember2"]))
+
         hook = subprocess.run([sys.executable, "-m", "tether", "hook", "session-start"],
                               input=json.dumps({"cwd": proj}), capture_output=True, text=True,
                               env=env)
@@ -91,4 +102,38 @@ def run() -> list[Check]:
                                 "selftest app" in injected, ""))
         except (json.JSONDecodeError, KeyError):
             checks.append(Check("Claude Code hook injects the pack", False, hook.stderr[:200]))
+
+        task_hook = subprocess.run(
+            [sys.executable, "-m", "tether", "hook", "post-tool-use"],
+            input=json.dumps({"cwd": proj, "session_id": "selftest", "tool_name": "TaskCreate",
+                              "tool_input": {"subject": "selftest code task"},
+                              "tool_response": {"task": {"id": "1"}}}),
+            capture_output=True, text=True, env={**env, "TETHER_NOTIFY": "0"})
+        from tether.store import Store
+        s = Store(os.path.join(home, "tether.db"))
+        synced = any(t["title"] == "selftest code task"
+                     for t in s.recent_session_tasks(s.find_project("selftest-app")["id"]))
+        s.close()
+        checks.append(Check("Claude Code task list syncs into Tether", synced,
+                            task_hook.stderr[:200]))
+        checks.append(_sync_check(tmp))
     return checks
+
+
+def _sync_check(tmp: str) -> Check:
+    """Two throwaway 'Macs' sharing a folder: an edit on each must reach the other."""
+    from tether.store import Store
+    try:
+        shared = os.path.join(tmp, "shared")
+        a = Store(os.path.join(tmp, "mac-a.db"), sync_dir=shared, machine="selftest-a")
+        b = Store(os.path.join(tmp, "mac-b.db"), sync_dir=shared, machine="selftest-b")
+        p = a.create_project("sync check")
+        b.pull()
+        b.update_project(b.find_project("sync-check")["id"], status="edited on B")
+        a.pull()
+        ok = a.project(p["id"])["status"] == "edited on B"
+        a.close()
+        b.close()
+        return Check("two-Mac sync round trip", ok, "")
+    except Exception as e:  # noqa: BLE001
+        return Check("two-Mac sync round trip", False, repr(e))

@@ -127,3 +127,11 @@ def test_stdio_end_to_end(tmp_path):
             return await client.call_tool("context", {})
     pack = text_of(anyio.run(go))
     assert pack.startswith("# e2e")
+
+
+def test_remember_never_files_into_the_only_project(store, monkeypatch, tmp_path):
+    store.create_project("query", "NL to SQL")
+    monkeypatch.setenv("TETHER_CWD", str(tmp_path))  # an unbound folder
+    server = build_server(store)
+    out = text_of(call(server, "remember", {"title": "Pizza oven plans", "body": "brick"}))
+    assert "unfiled" in out and store.memories()[0]["project_id"] is None

@@ -1,6 +1,7 @@
 """Two 'Macs' = two databases sharing one sync folder, each with its own machine id."""
 
 import json
+import time
 
 import pytest
 
@@ -139,11 +140,11 @@ def test_reference_to_a_row_later_in_the_same_batch(macs):
     journal = shared / "journals" / "mac-a.jsonl"
     lines = journal.read_text().splitlines()
     # move the d2 insert after the d1 update, keeping clocks so d1's update sorts first
-    ops = [json.loads(x) for x in lines]
+    head, ops = lines[0], [json.loads(x) for x in lines[1:]]
     d2 = next(o for o in ops if o["t"] == "decisions" and o["f"].get("text") == "two")
     upd = next(o for o in ops if o["t"] == "decisions" and "superseded_by" in o["f"])
     d2["ts"], upd["ts"] = upd["ts"], d2["ts"]
-    journal.write_text("".join(json.dumps(o) + "\n" for o in ops))
+    journal.write_text(head + "\n" + "".join(json.dumps(o) + "\n" for o in ops))
     b.pull()
     two = b.db.execute("SELECT id FROM decisions WHERE text='two'").fetchone()[0]
     assert b.get(f"d{d1['id']}")[1]["superseded_by"] == two
@@ -205,3 +206,53 @@ def test_init_binds_synced_project_instead_of_duplicating(tmp_path, monkeypatch)
     s = Store()
     assert [r["slug"] for r in s.projects()] == ["query"]
     assert s.project_for_path(folder)["slug"] == "query"
+
+
+def test_compaction_shrinks_and_peers_stay_correct(macs):
+    a, b, shared = macs
+    m = a.add_memory("Reading app", "v0")
+    for i in range(60):
+        a.update_memory(m["id"], body=f"draft {i} " + "words " * 20)
+    sync(a, b)
+    before, after = a.syncer.compact()
+    assert after < before / 10
+    a.update_memory(m["id"], title="after compaction")   # appended to the new file
+    sync(a, b)
+    row = b.memory(m["id"])
+    assert row["title"] == "after compaction" and row["body"].startswith("draft 59")
+    assert len(b.memories()) == 1                        # re-reading the snapshot is harmless
+
+
+def test_compaction_keeps_field_clocks(macs):
+    a, b, _ = macs
+    p = a.create_project("App")
+    sync(a, b)
+    b.update_project(p["id"], status="older edit on B")
+    time.sleep(0.01)            # same-millisecond edits tie-break on mac id: keep them ordered
+    a.update_project(p["id"], status="newer edit on A")
+    a.pull()                    # A keeps its newer value
+    a.syncer.compact()
+    b.pull()                    # B must take A's value: its clock is newer than B's edit
+    assert a.project(p["id"])["status"] == b.project(p["id"])["status"] == "newer edit on A"
+
+
+def test_new_mac_bootstraps_from_a_compacted_journal(macs, tmp_path):
+    a, b, shared = macs
+    p = a.create_project("App", "goal")
+    a.add_task(p["id"], "one")
+    a.syncer.compact()
+    c = Store(tmp_path / "c.db", sync_dir=shared, machine="mac-c")
+    assert c.find_project("app")["goal"] == "goal"
+    assert [t["title"] for t in c.tasks(c.find_project("app")["id"])] == ["one"]
+
+
+def test_auto_compaction_threshold(macs, monkeypatch):
+    from tether import sync as sync_mod
+    a, b, shared = macs
+    monkeypatch.setattr(sync_mod, "COMPACT_AT", 3000)
+    m = a.add_memory("idea")
+    for i in range(80):
+        a.update_memory(m["id"], body=f"version {i} " + "text " * 10)
+    assert (shared / "journals" / "mac-a.jsonl").stat().st_size < 5000
+    b.pull()
+    assert b.memory(m["id"])["body"].startswith("version 79")
