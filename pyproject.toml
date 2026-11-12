@@ -1,6 +1,6 @@
 [project]
-name = "tether"
-version = "0.1.0"
+name = "tether-mcp"
+version = "0.4.0"
 description = "Local-first project state (decisions, tasks, handoffs) shared across Claude Code, Desktop, Cowork, Chat and Design."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -8,7 +8,7 @@ license = "MIT"
 authors = [{ name = "Kalyan" }]
 keywords = ["mcp", "claude", "context", "memory", "tasks", "handoff"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
@@ -17,6 +17,10 @@ dependencies = [
     # MCP SDK 2.x (FastMCP was renamed MCPServer). Upper bound guards the next major.
     "mcp>=2.3,<3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/kelyonn/tether"
+Issues = "https://github.com/kelyonn/tether/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

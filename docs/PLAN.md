@@ -42,21 +42,17 @@ You ideate on **phone Chat, web Chat and in Claude Code**. You don't use the Des
 
 ## 4. Built so far
 
-**Done, with 36 tests passing**
-- SQLite store with migrations
-- Budgeted context pack
-- MCP server with 13 tools and built-in rules
-- Claude Code session-start hook
-- Paste-back for Chat and Design
-- Markdown mirror
-- Git link ("fixes t12")
-- `install`, `doctor` and `doctor --deep`
+**Done, 85 tests passing**
+- SQLite store with migrations, budgeted context pack, MCP server (17 tools) with built-in rules
+- Claude Code session-start hook and task-sync hook; paste-back for Chat and Design; Markdown mirror; git link ("fixes t12")
+- Memory layer: remember/recall/attach, dedupe, project suggestions, no project guessing
+- Drive-inbox import + `setup chat`; secrets blocking; notifications; `tether ui` / `watch`; promote
+- Two Macs: journal sync, field-level merge, per-Mac bindings, automatic and manual compaction
+- Rule-eval kit with Anthropic and NVIDIA providers
+- Desktop extension (`scripts/build_extension.py` -> `dist/tether.mcpb`)
+- Packaging as `tether-mcp` 0.4.0 (wheel and sdist build), CI on macOS and Linux
 
-**v0.2 built (this session, 54 tests):** memory tools, no project guessing, Code task-sync hook, `tether ui` / `watch`, secrets blocking, notifications, Drive-inbox import + `setup chat`, promote.
-
-**Two Macs: built** (journal sync, field-level merge, per-Mac folder bindings, `tether sync`, 15 sync tests).
-
-**Still to do:** journal compaction, real iCloud test across two physical Macs, real-world check of the Drive inbox from phone Chat, rule-following eval, run `tether install` to add the new hook.
+**Still to do (needs you):** real iCloud test (single Mac available, so sync is covered by tests only), real-world check of the Drive inbox from phone Chat, full rule-eval run (needs an API key), 2-3 weeks of dogfooding, then PyPI/GitHub publish.
 
 **(Old note) Half-built before v0.2:**
 - Memories table: save, update, attach, archive, and recall across everything
@@ -140,7 +136,7 @@ SQLite can't safely live in iCloud or Drive, because two machines writing to the
 - Each Mac imports the other's journal on start and on each read.
 - Records get globally unique ids, and the last write wins per field.
 
-**Built.** See `src/tether/sync.py`. Change capture uses SQLite triggers, so every write path is covered. Merge is field-level with a hybrid logical clock. Projects created on both Macs before syncing merge by slug. Not built: journal compaction.
+**Built.** See `src/tether/sync.py`. Change capture uses SQLite triggers, so every write path is covered. Merge is field-level with a hybrid logical clock. Projects created on both Macs before syncing merge by slug. Compaction is built (automatic past 8 MB, or `tether sync compact`).
 
 ## 7. Roadmap
 
@@ -184,7 +180,7 @@ Markdown mirror · `log_note` tool · project `brief` field (moves into attached
 | 8 | Live view | **Both** browser and terminal. The browser is **editable**. |
 | 9 | Extras | **Block secrets, two Macs, done notifications.** Other AI tools later. |
 | 10 | Cuts | Mirror, `log_note`, `brief`, paste-back. Remove after dogfooding. |
-| 11 | Name | **Keep Tether** for now |
+| 11 | Name | **Final.** Product is Tether; the PyPI package is `tether-mcp` |
 | 12 | Product shape | One product |
 
 **Still open, decide during dogfooding:**

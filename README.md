@@ -40,11 +40,20 @@ For others:
 ## Install
 
 ```bash
-uv tool install -e .        # from this folder; PyPI after launch
+uv tool install tether-mcp   # or: pipx install tether-mcp
+# from a clone: uv tool install -e .
 tether install              # registers with Claude Code (+ hook) and Claude Desktop
 ```
 
 `tether install` merges only its own keys into your Claude config files and backs each file up first. Use `--dry-run` to preview the changes and `--uninstall` to remove them. Restart Claude Desktop afterwards. `tether doctor` checks everything.
+
+### Claude Desktop extension
+
+```bash
+python scripts/build_extension.py   # writes dist/tether.mcpb
+```
+
+Double-click `dist/tether.mcpb` to add Tether to Claude Desktop without touching config files. It needs [uv](https://docs.astral.sh/uv/) installed.
 
 ## Check it works
 
@@ -145,7 +154,7 @@ the project lives elsewhere on the second Mac, run `tether init` there and it bi
 synced project instead of creating a duplicate.
 
 Limits: if iCloud "Optimize Mac Storage" evicts a journal, that Mac's changes wait until
-iCloud downloads it again. Journals grow over time; compaction isn't built yet.
+iCloud downloads it again. Journals are compacted automatically (past 8 MB), or on demand with `tether sync compact`.
 
 ## How it works
 

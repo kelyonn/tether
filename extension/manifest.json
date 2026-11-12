@@ -1,0 +1,22 @@
+{
+  "manifest_version": "0.3",
+  "name": "tether-mcp",
+  "display_name": "Tether",
+  "version": "0.4.0",
+  "description": "One memory and project ledger shared by every Claude surface.",
+  "long_description": "Tether keeps ideas, decisions, tasks and handoffs in one local SQLite file, so Claude Desktop, Cowork, Code and Chat work from the same state. No cloud service and no API key; secrets are blocked from being stored.",
+  "author": { "name": "Kalyan" },
+  "repository": { "type": "git", "url": "https://github.com/kelyonn/tether" },
+  "license": "MIT",
+  "keywords": ["memory", "tasks", "handoff", "context"],
+  "server": {
+    "type": "uv",
+    "entry_point": "server/main.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "python", "server/main.py"],
+      "env": { "TETHER_SURFACE": "desktop" }
+    }
+  },
+  "compatibility": { "platforms": ["darwin", "linux"] }
+}
