@@ -151,3 +151,15 @@ def test_deep_doctor(capsys):
     assert main(["doctor", "--deep"]) in (0, 1)  # 1 only because nothing is installed here
     out = capsys.readouterr().out
     assert "FAIL" not in out and out.count("ok  ") >= 5
+
+
+def test_status_sees_desktop_extension(tmp_path, monkeypatch):
+    import json
+    from tether import install
+    cfg = tmp_path / "claude_desktop_config.json"
+    cfg.write_text("{}")
+    (tmp_path / "extensions-installations.json").write_text(
+        json.dumps({"extensions": {"local.mcpb.someone.tether-mcp": {}}}))
+    monkeypatch.setattr(install, "desktop_config_path", lambda: cfg)
+    desk = [r for r in install.status() if r.client == "Claude Desktop"][0]
+    assert desk.action == "installed" and "extension" in desk.detail

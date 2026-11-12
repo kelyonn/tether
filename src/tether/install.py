@@ -217,11 +217,23 @@ def _state(entry: dict[str, Any] | None) -> str:
     return "installed" if Path(entry.get("command", "")).exists() else "stale"
 
 
+def desktop_extension_installed() -> bool:
+    """True if the one-click extension (tether.mcpb) is installed in Claude Desktop."""
+    try:
+        data = _read_json(desktop_config_path().parent / "extensions-installations.json")
+    except (ValueError, OSError):
+        return False
+    return any(k.endswith("tether-mcp") for k in data.get("extensions", {}))
+
+
 def status() -> list[Result]:
     out = []
     try:
         desk = _read_json(desktop_config_path()).get("mcpServers", {}).get(SERVER_NAME)
-        out.append(Result("Claude Desktop", _state(desk), str(desktop_config_path())))
+        if not desk and desktop_extension_installed():
+            out.append(Result("Claude Desktop", "installed", "via the Tether extension (tether.mcpb)"))
+        else:
+            out.append(Result("Claude Desktop", _state(desk), str(desktop_config_path())))
     except (ValueError, OSError) as e:
         out.append(Result("Claude Desktop", "error", str(e)))
     try:
