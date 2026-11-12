@@ -59,3 +59,13 @@ def test_replaces_and_headerless(store, project):
     assert parsed.project is None
     apply.apply(store, pid, parsed, "design")
     assert [x["text"] for x in store.decisions(pid)] == ["New one"]
+
+
+def test_inbox_parses_drive_escaped_front_matter():
+    from tether import inboxfmt
+    text = ("\\---  \ntitle: Streakly  \nkind: idea  \ntags: habit, local\\-first  \n"
+            "summary: One tap a day.  \n\\---  \nBody line.  \n")
+    item = inboxfmt.parse(text, "streakly.md")
+    assert item["title"] == "Streakly" and item["kind"] == "idea"
+    assert item["tags"] == "habit, local-first" and item["summary"] == "One tap a day."
+    assert item["body"] == "Body line."

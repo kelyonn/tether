@@ -23,19 +23,21 @@ from pathlib import Path
 
 from tether.store import MEMORY_KINDS, Store, TetherError, parse_memory_id
 
-FRONT_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?(.*)\Z", re.S)
+FRONT_RE = re.compile(r"\A\\?---[ \t]*\n(.*?)\n\\?---[ \t]*\n?(.*)\Z", re.S)
+# Google Drive hands markdown back with markdown escapes (`\---`, `local\-first`)
+ESCAPE_RE = re.compile(r"\\([\\`*_{}\[\]()#+\-.!|<>~])")
 TEXT_SUFFIXES = {".md", ".txt", ".markdown"}
 
 
 def parse(text: str, filename: str = "") -> dict:
     meta: dict[str, str] = {}
-    body = text.strip()
+    body = "\n".join(ln.rstrip() for ln in text.strip().splitlines())
     m = FRONT_RE.match(body)
     if m:
         for line in m.group(1).splitlines():
             if ":" in line:
                 k, _, v = line.partition(":")
-                meta[k.strip().lower()] = v.strip()
+                meta[k.strip().lower()] = ESCAPE_RE.sub(r"\1", v.strip())
         body = m.group(2).strip()
     title = meta.get("title", "")
     if not title:
