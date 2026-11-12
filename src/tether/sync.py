@@ -122,6 +122,7 @@ class Syncer:
         self.journals = self.dir / "journals"
         self._last_pull = 0.0
         self._cols: dict[str, list[str]] = {}
+        self._deferred: set[tuple[str, str]] | None = None
 
     @classmethod
     def from_config(cls, store: Any) -> "Syncer | None":
@@ -208,7 +209,8 @@ class Syncer:
         self.db.execute("BEGIN IMMEDIATE")  # also serialises flushes from other processes
         try:
             ops = []
-            pending = self.db.execute("SELECT tbl, rid FROM sync_outbox").fetchall()
+            # insertion order, so a parent row is stamped before the children created after it
+            pending = self.db.execute("SELECT tbl, rid FROM sync_outbox ORDER BY rowid").fetchall()
             for tbl, rid in pending:
                 row = self.db.execute(f"SELECT * FROM {tbl} WHERE id=?", (rid,)).fetchone()
                 if row is None or tbl not in TABLES:
@@ -359,10 +361,18 @@ class Syncer:
         try:
             self.db.execute("UPDATE sync_flags SET applying=1")
             self._retry: list[dict] = []
+            self._deferred: set[tuple[str, str]] | None = set()
             for op, _m in batch:
                 applied += self._apply(op)
                 for t in [op.get("ts", ""), *(op.get("ft") or {}).values()]:
                     self._observe(t)
+            late, self._deferred = self._deferred, None
+            # Ops for a row (or whose parent row) that only arrived later in the batch: a
+            # compacted snapshot's op carries its newest field clock, so it sorts after
+            # older partial ops and after rows that reference it. Replay them now.
+            for op, _m in batch:
+                if (op.get("t"), op.get("u")) in late:
+                    applied += self._apply(op)
             for op in self._retry:  # references to rows that arrived later in the batch
                 self._fix_refs(op)
             last = {m: max((op["ts"] for op, mm in batch if mm == m and "ts" in op), default=None)
@@ -400,7 +410,10 @@ class Syncer:
                                 "VALUES (?,?,?)", (tbl, uid, rid))
         fts = {k: (op.get("ft") or {}).get(k, ts) for k in fields}
         if rid is None:
-            return self._insert(tbl, uid, op.get("id"), fields, fts)
+            n = self._insert(tbl, uid, op.get("id"), fields, fts)
+            if not n and self._deferred is not None:
+                self._deferred.add((tbl, uid))
+            return n
         if tbl == "projects":
             fields = {k: v for k, v in fields.items() if k != "root_path"}  # bindings are per Mac
         luid = self._uid_of(tbl, rid)

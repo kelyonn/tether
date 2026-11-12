@@ -1,5 +1,5 @@
 {
-  "manifest_version": "0.3",
+  "manifest_version": "0.4",
   "name": "tether-mcp",
   "display_name": "Tether",
   "version": "0.4.0",
@@ -18,5 +18,5 @@
       "env": { "TETHER_SURFACE": "desktop" }
     }
   },
-  "compatibility": { "platforms": ["darwin", "linux"] }
+  "compatibility": { "platforms": ["darwin", "linux"], "runtimes": { "python": ">=3.10" } }
 }

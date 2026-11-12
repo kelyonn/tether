@@ -256,3 +256,42 @@ def test_auto_compaction_threshold(macs, monkeypatch):
     assert (shared / "journals" / "mac-a.jsonl").stat().st_size < 5000
     b.pull()
     assert b.memory(m["id"])["body"].startswith("version 79")
+
+
+def test_child_row_survives_a_compacted_parent_sorting_after_it(macs):
+    """A compacted project op carries its newest field clock, so it can sort after events
+    and tasks that reference it. Those children must not be dropped."""
+    a, b, _ = macs
+    p = a.create_project("App")
+    a.add_task(p["id"], "child")
+    time.sleep(0.01)
+    a.update_project(p["id"], status="later edit")  # newer project clock than the task's
+    a.syncer.compact()
+    b.pull()
+    bp = b.find_project("app")
+    assert [t["title"] for t in b.tasks(bp["id"])] == ["child"]
+    assert len(b.events(bp["id"])) == len(a.events(p["id"]))
+
+
+
+def test_update_sorting_before_a_compacted_snapshot_is_not_lost(macs, tmp_path):
+    """A third Mac reads B's rename (older clock) and A's compacted snapshot (top clock
+    newer, but its title field carries the older clock) in one batch: rename must win."""
+    a, b, shared = macs
+    p = a.create_project("App")
+    t = a.add_task(p["id"], "old title")
+    sync(a, b)
+    time.sleep(0.01)
+    b.update_task(t["id"], title="renamed on B")
+    b.flush()                                   # A has not pulled it yet
+    time.sleep(0.01)
+    a.update_task(t["id"], note="later edit")   # snapshot's top clock is now newer than the rename
+    a.syncer.compact()
+    c = Store(tmp_path / "c.db", sync_dir=shared, machine="mac-c")
+    try:
+        assert c.task(t["id"])["title"] == "renamed on B"
+        assert c.task(t["id"])["note"] == "later edit"
+        sync(a, b, c)
+        assert a.task(t["id"])["title"] == b.task(t["id"])["title"] == "renamed on B"
+    finally:
+        c.close()

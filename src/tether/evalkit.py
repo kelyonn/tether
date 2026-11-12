@@ -134,7 +134,7 @@ async def run_scenario(scn: dict, client: Any, model: str = DEFAULT_MODEL,
                             await _loop(client, model, effort, system, tools, messages, mcp,
                                         result)
                 except Exception as e:  # noqa: BLE001 - one broken scenario must not stop the run
-                    while isinstance(e, BaseExceptionGroup) and len(e.exceptions) == 1:
+                    while len(getattr(e, "exceptions", ())) == 1:  # ExceptionGroup is builtin only on 3.11+
                         e = e.exceptions[0]  # the MCP client's task group wraps the real error
                     result.error = f"{type(e).__name__}: {e}"
                 result.checks = [_check(c, store, before) for c in scn["checks"]]
