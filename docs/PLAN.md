@@ -48,11 +48,11 @@ You ideate on **phone Chat, web Chat and in Claude Code**. You don't use the Des
 - Memory layer: remember/recall/attach, dedupe, project suggestions, no project guessing
 - Drive-inbox import + `setup chat`; secrets blocking; notifications; `tether ui` / `watch`; promote
 - Two Macs: journal sync, field-level merge, per-Mac bindings, automatic and manual compaction
-- Rule-eval kit with Anthropic and NVIDIA providers
+- Rule-eval kit with Anthropic and NVIDIA providers. Full run on 2026-11-12 (Mistral Large 4 via NVIDIA, 1 run): 11/11 scenarios, 100% on every rule, against the 80% target. Not yet run on a Claude model.
 - Desktop extension (`scripts/build_extension.py` -> `dist/tether.mcpb`)
 - Packaging as `tether-mcp` 0.4.0 (wheel and sdist build), CI on macOS and Linux
 
-**Still to do (needs you):** real iCloud test (single Mac available, so sync is covered by tests only), real-world check of the Drive inbox from phone Chat, full rule-eval run (needs an API key), 2-3 weeks of dogfooding, then PyPI/GitHub publish.
+**Still to do (needs you):** real iCloud test (single Mac available, so sync is covered by tests only), real-world check of the Drive inbox from phone Chat, 2-3 weeks of dogfooding, then PyPI/GitHub publish.
 
 **(Old note) Half-built before v0.2:**
 - Memories table: save, update, attach, archive, and recall across everything
