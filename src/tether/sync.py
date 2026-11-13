@@ -79,6 +79,16 @@ def migration_sql() -> str:
     return "\n".join(L)
 
 
+def _torn_tail(path: Path) -> bool:
+    """True if the file's last line was cut short (no trailing newline)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(-1, os.SEEK_END)
+            return f.read(1) != b"\n"
+    except OSError:
+        return False
+
+
 def _line(op: dict) -> str:
     return json.dumps(op, separators=(",", ":")) + "\n"
 
@@ -236,6 +246,8 @@ class Syncer:
                     fcntl.flock(f, fcntl.LOCK_EX)
                     if f.tell() == 0:
                         f.write(_header() + "\n")
+                    elif _torn_tail(path):
+                        f.write("\n")      # a clipped last line must not swallow the next op
                     f.write("".join(_line(op) for op in ops))
                     f.flush()
                     os.fsync(f.fileno())
@@ -510,6 +522,31 @@ class Syncer:
             {"machine": self.machine, "host": socket.gethostname(), "joined": int(time.time())}))
 
     # -- status -----------------------------------------------------------------------
+
+    def check_own_journal(self) -> str | None:
+        """A description of what is wrong with this Mac's journal, or None if it is sound.
+        Compacting rewrites it from the database, which fixes every problem listed here."""
+        path = self.journals / f"{self.machine}.jsonl"
+        if not path.exists():
+            return None
+        try:
+            raw = path.read_bytes()
+        except OSError as e:
+            return f"cannot read it ({e})"
+        if not raw:
+            return "it is empty"
+        lines = raw.split(b"\n")
+        if lines[-1] != b"":
+            return "its last line is cut short"
+        if _journal_id(lines[0] + b"\n") is None:
+            return "its header is damaged"
+        bad = 0
+        for ln in lines[1:-1]:
+            try:
+                json.loads(ln)
+            except ValueError:
+                bad += 1
+        return f"{bad} damaged line(s)" if bad else None
 
     def status(self) -> dict[str, Any]:
         peers = []

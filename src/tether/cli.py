@@ -70,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     s = cmd("doctor", cmd_doctor, "check the install and the store")
     s.add_argument("--deep", action="store_true",
                    help="also start the real server in a temp store and drive it end to end")
+    s.add_argument("--fix", action="store_true",
+                   help="repair what can be repaired (rebuild the search index or your sync journal)")
+
+    s = cmd("export", cmd_export, "back up everything to one JSON file")
+    s.add_argument("file", nargs="?", help="where to write it (default: tether-backup-DATE.json)")
+
+    s = cmd("import", cmd_import, "restore a backup into an empty store")
+    s.add_argument("file")
 
     s = cmd("init", cmd_init, "create a project bound to this folder (or its git root)")
     s.add_argument("name", nargs="?", help="project name (default: folder name)")
@@ -333,6 +341,22 @@ def cmd_doctor(args) -> int:
     except ImportError as e:
         print(f"mcp sdk: missing ({e})")
         return 1
+    from tether import health
+    findings = health.check(store)
+    print("\nledger health:")
+    for f in findings:
+        print(f"  {'ok  ' if f.ok else 'FAIL'} {f.name}" + (f" — {f.detail}" if f.detail else ""))
+    if getattr(args, "fix", False):
+        repairs = health.repair(findings)
+        for line in repairs:
+            print(f"  fixed {line}")
+        if repairs:
+            findings = health.check(store)
+        else:
+            print("  nothing here can be fixed automatically")
+    elif any(not f.ok and f.fix for f in findings):
+        print("  Some of these can be repaired: run `tether doctor --fix`.")
+    bad = bad or not all(f.ok for f in findings)
     if args.deep:
         from tether import selftest
         print("\ndeep check (temporary store, real server over stdio):")
@@ -343,6 +367,24 @@ def cmd_doctor(args) -> int:
     if bad:
         print("\nProblems found. Re-run `tether install` to repair a stale install.")
     return 1 if bad else 0
+
+
+def cmd_export(args) -> int:
+    from datetime import date
+
+    from tether import portable
+    path = args.file or f"tether-backup-{date.today().isoformat()}.json"
+    counts = portable.write_export(_store(), path)
+    print(f"Wrote {path}: " + ", ".join(f"{n} {t}" for t, n in counts.items()) + ".")
+    print("It holds all your notes. Keep it somewhere private.")
+    return 0
+
+
+def cmd_import(args) -> int:
+    from tether import portable
+    counts = portable.import_data(_store(), portable.read_export(args.file))
+    print("Restored " + ", ".join(f"{n} {t}" for t, n in counts.items()) + ".")
+    return 0
 
 
 def cmd_init(args) -> int:
