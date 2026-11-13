@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Auto-archive: memories and projects unused for 30 days are archived (checked when the store opens, at most every 12 hours, or by hand with `tether sweep [--dry-run]`). Asking for one again (recall, `get`, opening its project or folder) restores it, and it is archived again after 7 days of no use. Archiving by hand is never undone automatically. Tune with `archive_after_days` and `rearchive_after_days` in the config; `archive_after_days: 0` turns it off.
+- Live view focus: the browser view shows every active project by default; "Focus on this" on a project narrows the sidebar and overview to it (remembered in the browser), and "Focused · show all" undoes it. `tether watch -p <slug>` does the same in the terminal.
+- Schema v5: a local, unsynced `usage` table.
+
 ## [0.4.0] - 2026-11-12
 
 ### Added

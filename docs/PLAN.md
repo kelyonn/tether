@@ -42,7 +42,7 @@ You ideate on **phone Chat, web Chat and in Claude Code**. You don't use the Des
 
 ## 4. Built so far
 
-**Done, 85 tests passing**
+**Done, 191 tests passing**
 - SQLite store with migrations, budgeted context pack, MCP server (17 tools) with built-in rules
 - Claude Code session-start hook and task-sync hook; paste-back for Chat and Design; Markdown mirror; git link ("fixes t12")
 - Memory layer: remember/recall/attach, dedupe, project suggestions, no project guessing
@@ -183,8 +183,10 @@ Markdown mirror · `log_note` tool · project `brief` field (moves into attached
 | 11 | Name | **Final.** Product is Tether; the PyPI package is `tether-mcp` |
 | 12 | Product shape | One product |
 
+**Decided 2026-11-13:**
+- Auto-archive memories and projects after 30 days unused. When one is asked for later, search the archive, restore the match, and re-archive it after 7 days of no use. Nothing is hard-deleted. Built: `archived=2` marks idle-archived items, a local `usage` table tracks last use, `tether sweep` runs it by hand.
+- Live view shows all active projects by default, with a way to focus one on demand. Built: "Focus on this" in the browser view, `tether watch -p <slug>` in the terminal.
+- No Cursor or Codex support for now.
+
 **Still open, decide during dogfooding:**
-- Do memories ever auto-archive (currently never)?
-- Does the live view show all projects or focus one by default (currently all)?
 - MIT vs AGPL at launch (currently MIT).
-- Whether other AI tools (Cursor, Codex) are needed before launch.
