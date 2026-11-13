@@ -10,6 +10,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write      # sign build provenance
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -33,9 +37,11 @@ jobs:
           echo "tag=$tag pyproject=$py __init__=$init"
           [ "$tag" = "$py" ] && [ "$tag" = "$init" ] || { echo "::error::version mismatch"; exit 1; }
 
-      - name: Test
+      - name: Lint, types and tests
         run: |
           python -m pip install -e ".[dev]"
+          ruff check src tests scripts
+          mypy
           python -m pytest -q
 
       - name: Build wheel and sdist
@@ -56,6 +62,14 @@ jobs:
             echo "::error::no CHANGELOG section for $v"; exit 1
           fi
           cat release-notes.md
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/tether.mcpb
 
       - uses: actions/upload-artifact@v4
         with:
