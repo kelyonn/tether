@@ -225,6 +225,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--out", default="evals/results", help="where to save the JSON report")
     s.add_argument("--list", action="store_true", help="list scenarios and exit")
 
+    s = cmd("github", cmd_github, "read GitHub and bring every project's status, branch state, "
+            "issues and pull requests up to date")
+    s.add_argument("action", nargs="?", default="sync", choices=["sync"])
+    s.add_argument("--dry-run", action="store_true", help="show what would change, change nothing")
+
     s = cmd("service", cmd_service, "keep the live view running in the background at login "
             "(macOS)")
     s.add_argument("action", choices=["install", "uninstall", "status"])
@@ -917,6 +922,16 @@ def cmd_archive(args) -> int:
     pid = _pid(store, args)
     row = store.update_project(pid, archived=not args.undo, surface=args.surface)
     print(f"{row['slug']} {'restored' if args.undo else 'archived'}.")
+    return 0
+
+
+def cmd_github(args) -> int:
+    from tether import github
+    reports = github.sync(_store(), args.project, args.dry_run)
+    for r in reports:
+        print(f"{r.slug:26} " + ("; ".join(r.lines) if r.lines else "up to date"))
+    print("\nDry run: nothing was changed." if args.dry_run else
+           "\nDone. Run it again any time; it only changes what GitHub says is different.")
     return 0
 
 

@@ -228,6 +228,62 @@ class RecordsMixin(StoreBase):
         self._changed(pid)
         return self.task(tid)
 
+    def sync_external_task(self, pid: int, ext_key: str, title: str, detail: str = "",
+                           priority: int = 2, for_surface: str = "any",
+                           surface: str = "github") -> tuple[sqlite3.Row, str]:
+        """Create or refresh a task that mirrors something outside Tether (a GitHub issue,
+        a branch that needs pushing). Keyed by `ext_key`, so it is safe to run repeatedly.
+        A task you dropped stays dropped; one that was closed because the outside thing
+        went away comes back if the thing does. Returns (task, what happened)."""
+        row = self.db.execute("SELECT * FROM tasks WHERE project_id=? AND ext_key=?",
+                              (pid, ext_key)).fetchone()
+        if row is None:
+            task = self.add_task(pid, title, detail, for_surface, priority, surface)
+            with self.tx():
+                self.db.execute("UPDATE tasks SET ext_key=? WHERE id=?", (ext_key, task["id"]))
+            return self.task(task["id"]), "added"
+        if row["status"] == "dropped":
+            return row, "unchanged"
+        fields: dict[str, Any] = {}
+        if title.strip() != row["title"]:
+            fields["title"] = title.strip()
+        if detail.strip() != row["detail"]:
+            fields["detail"] = detail.strip()
+        action = "updated" if fields else "unchanged"
+        if row["status"] == "done":
+            fields["status"], fields["closed_at"] = "todo", None
+            action = "reopened"
+        if not fields:
+            return row, action
+        secrets.check(*(v for k, v in fields.items() if k in ("title", "detail")))
+        fields["updated_at"] = now()
+        sets = ", ".join(f"{k}=?" for k in fields)
+        with self.tx():
+            self.db.execute(f"UPDATE tasks SET {sets} WHERE id=?", (*fields.values(), row["id"]))
+            self._log(pid, surface, "task", f"t{row['id']}", f"{action} task: {title.strip()}")
+        self._changed(pid)
+        return self.task(row["id"]), action
+
+    def close_external_tasks(self, pid: int, prefix: str, keep: set[str], note: str,
+                             surface: str = "github") -> int:
+        """Mark open tasks whose ext_key starts with `prefix` done when they are not in
+        `keep` any more (the issue closed, the branch got pushed). Returns how many."""
+        n = 0
+        for row in self.db.execute(
+                "SELECT * FROM tasks WHERE project_id=? AND ext_key LIKE ? AND status IN "
+                "('todo','doing','blocked')", (pid, prefix + "%")).fetchall():
+            if row["ext_key"] in keep:
+                continue
+            with self.tx():
+                ts = now()
+                self.db.execute("UPDATE tasks SET status='done', note=?, closed_at=?, updated_at=? "
+                                "WHERE id=?", (note, ts, ts, row["id"]))
+                self._log(pid, surface, "task", f"t{row['id']}", f"done: {row['title']} ({note})")
+            n += 1
+        if n:
+            self._changed(pid)
+        return n
+
     def drop_missing_session_tasks(self, pid: int, session_id: str, keep: set[str]) -> None:
         """TodoWrite sends the whole list each time: open items it no longer lists are gone."""
         rows = self.db.execute(

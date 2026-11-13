@@ -127,6 +127,7 @@ From there the bookkeeping happens as you work. The server ships its own rules: 
 | `tether git install` | "fixes t12" in a commit closes the task |
 | `tether ui` · `watch -p shop` | the live view, in the browser or the terminal |
 | `tether sweep [--dry-run]` | archive what has gone unused |
+| `tether github [--dry-run]` | read GitHub and update every project's status, branch state, issues and PRs |
 | `tether archived` · `restore m12` | see what is archived, bring it back |
 | `tether doctor [--deep] [--fix]` | check the install and the ledger, repair what can be |
 | `tether export [file]` · `import file` | back up everything, restore into an empty store |
