@@ -19,7 +19,7 @@ from typing import Any, Iterator
 from tether import config, secrets, sync
 from tether.errors import TetherError
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -129,7 +129,25 @@ MIGRATIONS = [
     """,
     # v4: two-Mac sync (uids, change-capture triggers, journal bookkeeping). See sync.py.
     sync.migration_sql(),
+    # v5: auto-archive. `usage` is local to this Mac and never synced: when a memory or
+    # project was last looked up, and whether it was pulled back out of the archive.
+    # projects/memories.archived is 0 active, 1 archived by hand, 2 archived for being idle.
+    """
+    CREATE TABLE IF NOT EXISTS usage (
+        tbl       TEXT NOT NULL,
+        rid       INTEGER NOT NULL,
+        last_used TEXT NOT NULL,
+        restored  INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (tbl, rid)
+    );
+    CREATE TABLE IF NOT EXISTS local_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    """,
 ]
+ARCHIVE_AFTER_DAYS = 30      # unused this long -> auto-archived
+REARCHIVE_AFTER_DAYS = 7     # unused this long after being restored -> archived again
+SWEEP_EVERY_HOURS = 12
+AUTO_ARCHIVED = 2
+MAX_RESTORE = 5
 MEMORY_KINDS = ("idea", "research", "spec", "decision-log", "bug", "todo-list", "note")
 STALE_DAYS = 60
 STOPWORDS = frozenset("""a an and are as at be but by for from has have how i if in into is it its
@@ -218,6 +236,10 @@ class Store:
                        else sync.Syncer.from_config(self))
         self.sync_error: str | None = None
         self.pulled_on_open = self.pull()
+        try:
+            self.maybe_sweep()
+        except sqlite3.Error:
+            pass            # tidying up must never stop a read or a write
 
     # -- sync (see sync.py); a sync failure must never break a write or a read ----------
 
@@ -336,15 +358,21 @@ class Store:
         target = norm_path(path)
         best = None
         for row in self.db.execute(
-                "SELECT * FROM projects WHERE root_path IS NOT NULL AND archived=0"):
+                "SELECT * FROM projects WHERE root_path IS NOT NULL AND archived IN (0, 2)"):
             root = row["root_path"]
             if target == root or target.startswith(root.rstrip(os.sep) + os.sep):
                 if best is None or len(root) > len(best["root_path"]):
                     best = row
-        return best
+        return self._use_project(best) if best else None
 
     def resolve_project(self, ident: str | None = None, cwd: str | None = None,
                         use_current: bool = True) -> sqlite3.Row:
+        """Pick the project for a request (see _resolve_project). Picking it counts as
+        using it: an idle-archived project comes back, and its 30-day clock restarts."""
+        return self._use_project(self._resolve_project(ident, cwd, use_current))
+
+    def _resolve_project(self, ident: str | None = None, cwd: str | None = None,
+                         use_current: bool = True) -> sqlite3.Row:
         """Pick the project for a request.
 
         Order: explicit name/slug, then TETHER_PROJECT, then the project bound to cwd,
@@ -368,7 +396,7 @@ class Store:
         current = config.load_config().get("current_project") if use_current else None
         if current:
             row = self.find_project(current)
-            if row and not row["archived"]:
+            if row and row["archived"] in (0, AUTO_ARCHIVED):
                 return row
         rows = self.projects()
         if len(rows) == 1:
@@ -742,10 +770,26 @@ class Store:
 
     def recall(self, query: str, limit: int = 15) -> list[tuple[str, sqlite3.Row, str | None]]:
         """Search memories and every project's records. Returns (kind, row, project slug).
-        This is the cross-surface lookup: a chat that doesn't know the project uses it."""
+        This is the cross-surface lookup: a chat that doesn't know the project uses it.
+        If the live results don't fill `limit`, idle-archived items that match are pulled
+        back out of the archive and included."""
         words = [w for w in query.split() if w]
         if not words:
             raise TetherError("search query is empty")
+        out = self._recall_live(query, words, limit)
+        if len(out) < limit and self._restore_matching(query, words, min(MAX_RESTORE, limit - len(out))):
+            out = self._recall_live(query, words, limit)
+        for kind, row, _slug in out:
+            if kind == "memories":
+                self.touch("memories", row["id"])
+            elif kind == "projects":
+                self.touch("projects", row["id"])
+            elif "project_id" in row.keys() and row["project_id"]:
+                self.touch("projects", row["project_id"])
+        return out
+
+    def _recall_live(self, query: str, words: list[str], limit: int
+                     ) -> list[tuple[str, sqlite3.Row, str | None]]:
         like = [f"%{w}%" for w in words]
         out: list[tuple[str, sqlite3.Row, str | None]] = []
         cond = " AND ".join("(m.title || ' ' || m.body || ' ' || m.tags) LIKE ?" for _ in words)
@@ -875,6 +919,106 @@ class Store:
                         "ON CONFLICT(project_id, surface) DO UPDATE SET event_id=excluded.event_id",
                         (pid, surface, latest))
 
+    # -- auto-archive -------------------------------------------------------------
+    # Memories and projects nobody has used for ARCHIVE_AFTER_DAYS are archived (archived=2).
+    # Asking for one again restores it; if it then goes unused for REARCHIVE_AFTER_DAYS it
+    # is archived again. Nothing is deleted. Archiving by hand (archived=1) is never undone
+    # automatically. "Used" = looked up here (usage table, local) or edited/active anywhere.
+
+    def touch(self, tbl: str, rid: int) -> None:
+        try:
+            self.db.execute(
+                "INSERT INTO usage (tbl, rid, last_used) VALUES (?,?,?) "
+                "ON CONFLICT(tbl, rid) DO UPDATE SET last_used=excluded.last_used",
+                (tbl, rid, now()))
+        except sqlite3.OperationalError:
+            pass            # a busy or read-only database must not break a lookup
+
+    def _restore(self, tbl: str, rid: int) -> None:
+        with self.tx():
+            self.db.execute(f"UPDATE {tbl} SET archived=0 WHERE id=? AND archived=?",
+                            (rid, AUTO_ARCHIVED))
+            self.db.execute(
+                "INSERT INTO usage (tbl, rid, last_used, restored) VALUES (?,?,?,1) "
+                "ON CONFLICT(tbl, rid) DO UPDATE SET last_used=excluded.last_used, restored=1",
+                (tbl, rid, now()))
+
+    def _use_project(self, row: sqlite3.Row) -> sqlite3.Row:
+        if row["archived"] == AUTO_ARCHIVED:
+            self._restore("projects", row["id"])
+            row = self.project(row["id"])
+        self.touch("projects", row["id"])
+        return row
+
+    def _restore_matching(self, query: str, words: list[str], room: int) -> int:
+        """Restore up to `room` idle-archived memories/projects matching the query."""
+        like = [f"%{w}%" for w in words]
+        n = 0
+        cond = " AND ".join("(title || ' ' || body || ' ' || tags) LIKE ?" for _ in words)
+        for m in self.db.execute(
+                f"SELECT id FROM memories WHERE archived=? AND {cond} "
+                "ORDER BY updated_at DESC LIMIT ?", (AUTO_ARCHIVED, *like, room)).fetchall():
+            self._restore("memories", m["id"])
+            n += 1
+        pcond = " AND ".join("(name || ' ' || goal || ' ' || status || ' ' || brief) LIKE ?"
+                             for _ in words)
+        for p in self.db.execute("SELECT id FROM projects WHERE archived=?",
+                                 (AUTO_ARCHIVED,)).fetchall():
+            if n >= room:
+                break
+            hit = self.db.execute(f"SELECT 1 FROM projects WHERE id=? AND {pcond}",
+                                  (p["id"], *like)).fetchone() or self.search(p["id"], query, 1)
+            if hit:
+                self._restore("projects", p["id"])
+                n += 1
+        return n
+
+    def _idle_ids(self, tbl: str, activity: str, cutoff: str, re_cutoff: str) -> list[int]:
+        # activity: SQL giving the newest sign of life other than a lookup, e.g. updated_at
+        sql = (f"SELECT x.id FROM {tbl} x LEFT JOIN usage u ON u.tbl='{tbl}' AND u.rid=x.id "
+               f"WHERE x.archived=0 AND max(coalesce(u.last_used,''), {activity}) < "
+               "CASE WHEN coalesce(u.restored,0)=1 THEN ? ELSE ? END")
+        return [r["id"] for r in self.db.execute(sql, (re_cutoff, cutoff))]
+
+    def archive_idle(self, dry_run: bool = False) -> dict[str, list[int]]:
+        """Archive every memory and project unused past the limits. Returns the ids."""
+        after = _days("archive_after_days", ARCHIVE_AFTER_DAYS)
+        again = _days("rearchive_after_days", REARCHIVE_AFTER_DAYS)
+        found: dict[str, list[int]] = {"memories": [], "projects": []}
+        if after <= 0:
+            return found
+        iso = lambda d: (datetime.now(timezone.utc) - timedelta(days=d)  # noqa: E731
+                         ).isoformat(timespec="seconds")
+        cutoff, re_cutoff = iso(after), iso(min(again, after) if again > 0 else after)
+        found["memories"] = self._idle_ids(
+            "memories", "x.updated_at, x.created_at", cutoff, re_cutoff)
+        found["projects"] = self._idle_ids(
+            "projects",
+            "x.updated_at, x.created_at, "
+            "coalesce((SELECT max(ts) FROM events e WHERE e.project_id=x.id),''), "
+            "coalesce((SELECT max(updated_at) FROM tasks t WHERE t.project_id=x.id),''), "
+            "coalesce((SELECT max(updated_at) FROM handoffs h WHERE h.project_id=x.id),''), "
+            "coalesce((SELECT max(updated_at) FROM memories m WHERE m.project_id=x.id),'')",
+            cutoff, re_cutoff)
+        if not dry_run and (found["memories"] or found["projects"]):
+            with self.tx():
+                for tbl, ids in found.items():
+                    for i in ids:
+                        self.db.execute(f"UPDATE {tbl} SET archived=? WHERE id=?",
+                                        (AUTO_ARCHIVED, i))
+        return found
+
+    def maybe_sweep(self) -> dict[str, list[int]] | None:
+        """archive_idle at most once per SWEEP_EVERY_HOURS (called when the store opens)."""
+        row = self.db.execute("SELECT value FROM local_state WHERE key='last_sweep'").fetchone()
+        if row and row["value"] > (datetime.now(timezone.utc) - timedelta(
+                hours=SWEEP_EVERY_HOURS)).isoformat(timespec="seconds"):
+            return None
+        found = self.archive_idle()
+        self.db.execute("INSERT INTO local_state (key, value) VALUES ('last_sweep', ?) "
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (now(),))
+        return found
+
     # -- lookup -----------------------------------------------------------------
 
     def get(self, ref: str) -> tuple[str, sqlite3.Row]:
@@ -882,6 +1026,13 @@ class Store:
         row = self.db.execute(f"SELECT * FROM {table} WHERE id=?", (rid,)).fetchone()
         if not row:
             raise TetherError(f"{ref} not found")
+        if table == "memories":
+            if row["archived"] == AUTO_ARCHIVED:
+                self._restore("memories", rid)
+                row = self.memory(rid)
+            self.touch("memories", rid)
+        elif row["project_id"]:
+            self._use_project(self.project(row["project_id"]))
         return table, row
 
     def search(self, pid: int, query: str, limit: int = 20) -> list[tuple[str, sqlite3.Row]]:
@@ -911,6 +1062,13 @@ class Store:
             "ORDER BY id DESC LIMIT ?", (pid, *[f"%{w}%" for w in words], limit)).fetchall()
         out.extend(("events", r) for r in notes)
         return out[:limit]
+
+
+def _days(key: str, default: float) -> float:
+    try:
+        return float(config.load_config().get(key, default))
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def _kind(kind: str | None) -> str:

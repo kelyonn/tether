@@ -225,6 +225,9 @@ def build_parser() -> argparse.ArgumentParser:
     s = cmd("archive", cmd_archive, "archive a project (hidden from lists)")
     s.add_argument("--undo", action="store_true")
 
+    s = cmd("sweep", cmd_sweep, "archive memories and projects unused for 30 days")
+    s.add_argument("--dry-run", action="store_true", help="show what would be archived")
+
     cmd("serve", cmd_serve, "run the MCP server on stdio (clients start this)")
 
     s = cmd("git", cmd_git, "close tasks from commit messages (\"fixes t12\")")
@@ -811,6 +814,15 @@ def cmd_archive(args) -> int:
     pid = _pid(store, args)
     row = store.update_project(pid, archived=not args.undo, surface=args.surface)
     print(f"{row['slug']} {'restored' if args.undo else 'archived'}.")
+    return 0
+
+
+def cmd_sweep(args) -> int:
+    store = _store()
+    found = store.archive_idle(dry_run=args.dry_run)
+    verb = "Would archive" if args.dry_run else "Archived"
+    print(f"{verb} {len(found['memories'])} memories and {len(found['projects'])} projects "
+          "that were unused. Asking for one again brings it back.")
     return 0
 
 
