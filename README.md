@@ -16,6 +16,7 @@
     <a href="#use">USE</a> &nbsp;·&nbsp;
     <a href="#live-view">LIVE VIEW</a> &nbsp;·&nbsp;
     <a href="#auto-archive">AUTO-ARCHIVE</a> &nbsp;·&nbsp;
+    <a href="#health-and-backups">HEALTH</a> &nbsp;·&nbsp;
     <a href="#surfaces-without-mcp">SURFACES WITHOUT MCP</a> &nbsp;·&nbsp;
     <a href="#two-macs">TWO MACS</a>
   </sub>
@@ -29,7 +30,7 @@
     <td><sub>STORAGE</sub><br><b>Local, on your machine</b></td>
     <td><sub>INTERFACE</sub><br><b>MCP server + CLI</b></td>
     <td><sub>SECRETS</sub><br><b>Refused on every write</b></td>
-    <td><sub>TESTS</sub><br><b>207</b></td>
+    <td><sub>TESTS</sub><br><b>272</b></td>
   </tr>
 </table>
 
@@ -126,6 +127,9 @@ From there the bookkeeping happens as you work. The server ships its own rules: 
 | `tether git install` | "fixes t12" in a commit closes the task |
 | `tether ui` · `watch -p shop` | the live view, in the browser or the terminal |
 | `tether sweep [--dry-run]` | archive what has gone unused |
+| `tether archived` · `restore m12` | see what is archived, bring it back |
+| `tether doctor [--deep] [--fix]` | check the install and the ledger, repair what can be |
+| `tether export [file]` · `import file` | back up everything, restore into an empty store |
 
 </details>
 
@@ -135,6 +139,8 @@ From there the bookkeeping happens as you work. The server ships its own rules: 
 tether ui                 # an editable live view on localhost
 tether watch -p shop      # the same in the terminal, read-only, for one project
 ```
+
+Press `?` for the keyboard shortcuts: `/` search, `c` capture an idea, `g` then `o` / `i` / `a` to go to the overview, ideas or archive, and `f` to focus.
 
 The overview shows every active project, with what each surface is doing right now. When you want one project only, press **Focus on this** on its page: the sidebar and the overview narrow to it, and the choice is remembered in your browser. **Focused · show all** in the sidebar brings the rest back. `tether watch` shows every project unless you pass `-p`.
 
@@ -157,6 +163,18 @@ Ideas and projects nobody has touched for 30 days are archived, so lists and the
 
 </details>
 
+## Health and backups
+
+```bash
+tether doctor --fix       # checks the database, references, search index and sync journal
+tether export             # one private JSON file with everything
+tether import backup.json # restore into an empty store
+```
+
+`doctor` only reads; `--fix` rebuilds things that can be derived (the search index, this Mac's sync journal) and never touches your notes. `import` refuses a store that already has data, because combining two Macs is what sync is for.
+
+Search is ranked full-text (SQLite FTS5): every word must match, as the start of a word, best matches first. The [tool reference](docs/TOOLS.md) lists every MCP tool and its parameters, generated from the code.
+
 ## Surfaces without MCP
 
 For Chat and Design, copy the pack in and the update out:
@@ -175,5 +193,18 @@ tether sync setup        # on each Mac; iCloud Drive by default
 ```
 
 Each Mac keeps its own database and appends only to its own journal in the shared folder. Nothing writes the same file from two machines, so iCloud never sees a conflict. Changes merge field by field, newest edit wins per field, so finishing a task on one Mac and renaming it on the other both survive.
+
+## Development
+
+```bash
+uv pip install -e ".[dev,e2e]"   # or: python -m pip install -e ".[dev,e2e]"
+ruff check src tests scripts     # lint
+mypy                             # types
+python -m pytest --cov           # tests, with a coverage floor
+python -m pytest tests/e2e       # the live view in a real browser (needs Chrome or `playwright install chromium`)
+python scripts/gen_tool_docs.py  # after changing an MCP tool
+```
+
+CI runs all of these. See [SECURITY.md](SECURITY.md) to report a vulnerability and to verify a release.
 
 <sub>MIT.</sub>

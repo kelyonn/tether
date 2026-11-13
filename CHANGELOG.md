@@ -10,6 +10,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Auto-archive: memories and projects unused for 30 days are archived (checked when the store opens, at most every 12 hours, or by hand with `tether sweep [--dry-run]`). Asking for one again (recall, `get`, opening its project or folder) restores it, and it is archived again after 7 days of no use. Archiving by hand is never undone automatically. Tune with `archive_after_days` and `rearchive_after_days` in the config; `archive_after_days: 0` turns it off.
 - Live view focus: the browser view shows every active project by default; "Focus on this" on a project narrows the sidebar and overview to it (remembered in the browser), and "Focused · show all" undoes it. `tether watch -p <slug>` does the same in the terminal.
 - Schema v5: a local, unsynced `usage` table.
+- Ranked full-text search (SQLite FTS5, schema v6) for `recall` and `search`, with the old substring match as a top-up and as the fallback on SQLite builds without FTS5.
+- `tether doctor` reports database, reference, archive-flag, search-index and sync-journal health; `doctor --fix` rebuilds the index and this Mac's journal.
+- `tether export` / `tether import`: a private JSON backup and a restore into an empty store.
+- `tether archived` and `tether restore`; an Archive page in the live view with Restore buttons.
+- Live view keyboard shortcuts (`/`, `c`, `g` then `o`/`i`/`a`, `f`, `?`).
+- `tether install` ends with an end-to-end check and numbered next steps (`--no-check` skips it).
+- Plain-language errors for a busy, damaged or read-only ledger and for permission problems (`TETHER_DEBUG=1` shows the traceback).
+- `docs/TOOLS.md`, the MCP tool reference generated from the code, with a test that keeps it current.
+- `SECURITY.md`, Dependabot, a lockfile, and signed build provenance on release artifacts.
+
+### Changed
+
+- The store is now a package of focused modules; imports and behavior are unchanged.
+- CI gains lint (ruff), type (mypy) and coverage gates, a lockfile check and a browser-test job.
+- A clipped last line in this Mac's sync journal is healed before the next write instead of swallowing it.
+- The live view reads a refused write's body before answering, so a 403 is no longer a reset connection.
 
 ## [0.4.0] - 2026-11-12
 
