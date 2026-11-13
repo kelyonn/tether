@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from tether.store import Store
 from tether import sync as sync_mod
+from tether.store import Store
 
 NAMES = ["Alpha", "Beta", "Gamma", "Delta", "Query App"]  # small pool: same-slug merges happen
 STATUSES = ["todo", "doing", "done", "blocked"]

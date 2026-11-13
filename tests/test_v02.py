@@ -7,7 +7,8 @@ import urllib.request
 
 import pytest
 
-from tether import apply as apply_mod, hooks, inboxfmt, install, ui
+from tether import apply as apply_mod
+from tether import hooks, inboxfmt, install, ui
 from tether.store import Store, TetherError
 
 
@@ -217,6 +218,7 @@ def test_ui_http_requires_token_and_local_host(tmp_path, monkeypatch):
 def test_service_plist_and_launchctl_calls(monkeypatch, tmp_path):
     import plistlib
     import sys as _sys
+
     from tether import service
     if _sys.platform != "darwin":
         pytest.skip("launchd is macOS only")

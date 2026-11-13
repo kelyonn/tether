@@ -47,7 +47,7 @@ def test_resolve_order(store, tmp_path, monkeypatch):
 def test_supersede_decision(store, project):
     pid = project["id"]
     d1 = store.add_decision(pid, "Use Postgres", "familiar")
-    d2 = store.add_decision(pid, "Use SQLite", "local-first", supersedes="d%d" % d1["id"])
+    d2 = store.add_decision(pid, "Use SQLite", "local-first", supersedes=f"d{d1['id']}")
     active = store.decisions(pid)
     assert [d["id"] for d in active] == [d2["id"]]
     old = store.decisions(pid, include_superseded=True)[-1]

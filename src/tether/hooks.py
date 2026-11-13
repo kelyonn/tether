@@ -73,6 +73,6 @@ def post_tool_use() -> int:
             store.drop_missing_session_tasks(pid, sid, keep)
         if finished:
             notify.notify(f"Code finished ({row['slug']})", finished)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return 0
     return 0

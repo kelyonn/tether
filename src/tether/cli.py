@@ -9,13 +9,21 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
-from tether import (__version__, apply as apply_mod, config, gitlink, hooks, inboxfmt, install,
-                    mirror, sync)
-from tether.render import (UPDATE_FORMAT_HELP, ago, context_pack, detail, memory_line,
-                           projects_overview, recall_results, search_results, task_line)
-from tether.store import (MEMORY_KINDS, Store, TetherError, parse_handoff_id, parse_memory_id,
-                          parse_task_id)
+from tether import __version__, config, gitlink, hooks, inboxfmt, install, mirror, sync
+from tether import apply as apply_mod
+from tether.render import (
+    UPDATE_FORMAT_HELP,
+    ago,
+    context_pack,
+    detail,
+    memory_line,
+    recall_results,
+    search_results,
+    task_line,
+)
+from tether.store import MEMORY_KINDS, Store, TetherError, parse_handoff_id, parse_memory_id, parse_task_id
 
 PASTE_SURFACES = ("chat", "design")
 
@@ -455,7 +463,8 @@ def _project_field(args, field: str, value: str | None) -> int:
     if value is None:
         print(store.project(pid)[field] or f"(no {field} set)")
         return 0
-    store.update_project(pid, surface=args.surface, **{field: value})
+    fields: dict[str, Any] = {field: value}
+    store.update_project(pid, surface=args.surface, **fields)
     print(f"{field} updated.")
     return 0
 
@@ -687,7 +696,7 @@ def cmd_eval(args) -> int:
     if args.provider == "nvidia":
         from tether import openai_compat
         args.model = args.model or openai_compat.NVIDIA_MODEL
-        make_client = openai_compat.OpenAICompatClient
+        make_client: Any = openai_compat.OpenAICompatClient
     else:
         try:
             import anthropic
@@ -851,7 +860,7 @@ def cmd_hook(args) -> int:
     if args.event == "post-commit":
         try:
             gitlink.run_post_commit()
-        except Exception:  # noqa: BLE001 - never fail a commit
+        except Exception:
             pass
         return 0
     if args.event == "post-tool-use":
@@ -872,7 +881,7 @@ def _session_start_hook() -> int:
         if not row:
             return 0
         pack = context_pack(store, row["id"], "code")
-    except Exception:  # noqa: BLE001
+    except Exception:
         return 0
     note = ("This is the Tether context for this project, loaded at session start. "
             "You don't need to call the tether `context` tool. Follow Tether's rules: "

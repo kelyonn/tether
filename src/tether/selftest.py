@@ -45,7 +45,7 @@ def run() -> list[Check]:
 
                 async def call(name: str, args: dict) -> str:
                     r = await client.call_tool(name, args)
-                    text = "\n".join(c.text for c in r.content if getattr(c, "text", None))
+                    text = "\n".join(t for c in r.content if (t := getattr(c, "text", None)))
                     if r.is_error:
                         raise RuntimeError(f"{name}: {text}")
                     return text
@@ -71,7 +71,7 @@ def run() -> list[Check]:
 
         try:
             got = anyio.run(drive)
-        except BaseException as e:  # noqa: BLE001 - report any failure, including SDK errors
+        except BaseException as e:
             return [Check("server starts and answers over stdio", False, repr(e))]
 
         want = {"context", "record_decision", "add_tasks", "update_task", "create_handoff"}
@@ -112,7 +112,7 @@ def run() -> list[Check]:
         from tether.store import Store
         s = Store(os.path.join(home, "tether.db"))
         synced = any(t["title"] == "selftest code task"
-                     for t in s.recent_session_tasks(s.find_project("selftest-app")["id"]))
+                     for t in s.recent_session_tasks(s.require_project("selftest-app")["id"]))
         s.close()
         checks.append(Check("Claude Code task list syncs into Tether", synced,
                             task_hook.stderr[:200]))
@@ -129,11 +129,11 @@ def _sync_check(tmp: str) -> Check:
         b = Store(os.path.join(tmp, "mac-b.db"), sync_dir=shared, machine="selftest-b")
         p = a.create_project("sync check")
         b.pull()
-        b.update_project(b.find_project("sync-check")["id"], status="edited on B")
+        b.update_project(b.require_project("sync-check")["id"], status="edited on B")
         a.pull()
         ok = a.project(p["id"])["status"] == "edited on B"
         a.close()
         b.close()
         return Check("two-Mac sync round trip", ok, "")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         return Check("two-Mac sync round trip", False, repr(e))

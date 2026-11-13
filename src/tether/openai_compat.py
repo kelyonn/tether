@@ -87,7 +87,7 @@ class OpenAICompatClient:
         self.base_url = base_url.rstrip("/")
         self.beta = NS(messages=NS(create=self._create))
 
-    async def __aenter__(self) -> "OpenAICompatClient":
+    async def __aenter__(self) -> OpenAICompatClient:
         return self
 
     async def __aexit__(self, *exc: Any) -> None:

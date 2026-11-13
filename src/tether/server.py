@@ -15,12 +15,18 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import ToolAnnotations
 from pydantic import BaseModel, Field
 
-from tether import __version__, config, mirror
-from tether import notify
-from tether.render import (DEFAULT_BUDGET_TOKENS, context_pack, detail, memory_line,
-                           projects_overview, recall_results, search_results, task_line)
-from tether.store import (Store, TetherError, parse_handoff_id, parse_memory_id,
-                          parse_task_id)
+from tether import __version__, config, mirror, notify
+from tether.render import (
+    DEFAULT_BUDGET_TOKENS,
+    context_pack,
+    detail,
+    memory_line,
+    projects_overview,
+    recall_results,
+    search_results,
+    task_line,
+)
+from tether.store import Store, TetherError, parse_handoff_id, parse_memory_id, parse_task_id
 
 Surface = Literal["code", "desktop", "cowork", "chat", "design", "any"]
 TaskStatus = Literal["todo", "doing", "blocked", "done", "dropped"]
@@ -66,8 +72,8 @@ not a reason to make one.
 Be terse in everything you record. Refer to items as t12 (task), d3 (decision), h2 \
 (handoff). Never record secrets."""
 
-READ = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
-WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+READ = ToolAnnotations(readOnlyHint=True, openWorldHint=False)  # type: ignore[call-arg]
+WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)  # type: ignore[call-arg]
 
 
 class NewTask(BaseModel):
@@ -242,8 +248,8 @@ def build_server(store: Store | None = None) -> MCPServer:
         pid = None
         if project:
             pid = resolve(project)
-        elif _working_dir():
-            bound = store.project_for_path(_working_dir())
+        elif (wd := _working_dir()):
+            bound = store.project_for_path(wd)
             pid = bound["id"] if bound else None
         tag_s = ",".join(tags or [])
         if update_of:

@@ -152,7 +152,7 @@ def test_reference_to_a_row_later_in_the_same_batch(macs):
 
 def test_events_remember_which_mac(macs):
     a, b, _ = macs
-    p = a.create_project("App")
+    a.create_project("App")
     sync(a, b)
     assert {e["machine"] for e in b.events(b.find_project("app")["id"])} == {"mac-a"}
 

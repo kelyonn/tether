@@ -1,6 +1,5 @@
 from tether import apply
 
-
 BLOCK = """
 Sure, here's the summary of what we decided.
 

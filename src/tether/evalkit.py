@@ -18,10 +18,11 @@ import json
 import os
 import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from mcp import Client
 
@@ -78,7 +79,7 @@ def seed(store: Store, spec: dict, root: Path) -> None:
             if t.get("status"):
                 store.update_task(task["id"], status=t["status"])
     for m in spec.get("memories", []):
-        pid = store.find_project(m["project"])["id"] if m.get("project") else None
+        pid = store.require_project(m["project"])["id"] if m.get("project") else None
         store.add_memory(m["title"], m.get("body", ""), m.get("tags", ""), "chat", pid,
                          m.get("kind", "idea"), m.get("summary", ""))
 
@@ -116,7 +117,7 @@ async def run_scenario(scn: dict, client: Any, model: str = DEFAULT_MODEL,
             store = Store()
             seed(store, scn.get("seed", {}), root)
             if scn.get("cwd_project"):
-                cwd = store.find_project(scn["cwd_project"])["root_path"]
+                cwd = store.require_project(scn["cwd_project"])["root_path"]
             with _env(TETHER_CWD=cwd or str(root / "unbound-chat")):
                 (root / "unbound-chat").mkdir(exist_ok=True)
                 before = _snapshot(store)
@@ -133,10 +134,11 @@ async def run_scenario(scn: dict, client: Any, model: str = DEFAULT_MODEL,
                             messages.append({"role": "user", "content": user_msg})
                             await _loop(client, model, effort, system, tools, messages, mcp,
                                         result)
-                except Exception as e:  # noqa: BLE001 - one broken scenario must not stop the run
-                    while len(getattr(e, "exceptions", ())) == 1:  # ExceptionGroup is builtin only on 3.11+
-                        e = e.exceptions[0]  # the MCP client's task group wraps the real error
-                    result.error = f"{type(e).__name__}: {e}"
+                except Exception as e:
+                    err: Any = e
+                    while len(getattr(err, "exceptions", ())) == 1:  # ExceptionGroup is builtin only on 3.11+
+                        err = err.exceptions[0]  # the MCP client's task group wraps the real error
+                    result.error = f"{type(err).__name__}: {err}"
                 result.checks = [_check(c, store, before) for c in scn["checks"]]
                 store.close()
                 return result
@@ -146,7 +148,7 @@ def _system_prompt(scn: dict, store: Store, surface: str) -> str:
     parts = [INSTRUCTIONS, f"\nYou are Claude in {surface}. Tether is connected as an MCP "
              "server; its tools are available to you."]
     if scn.get("cwd_project"):  # what the Claude Code session-start hook injects
-        pid = store.find_project(scn["cwd_project"])["id"]
+        pid = store.require_project(scn["cwd_project"])["id"]
         parts.append("\nThis is the Tether context for this project, loaded at session start. "
                      "You don't need to call the tether `context` tool.\n\n"
                      + context_pack(store, pid, surface, mark_seen=False))
@@ -182,7 +184,7 @@ async def _loop(client: Any, model: str, effort: str, system: str, tools: list[d
         for block in uses:
             result.tool_calls.append(block.name)
             r = await mcp.call_tool(block.name, block.input)
-            text = "\n".join(c.text for c in r.content if getattr(c, "text", None))
+            text = "\n".join(t for c in r.content if (t := getattr(c, "text", None)))
             results.append({"type": "tool_result", "tool_use_id": block.id,
                             "content": text or "(empty)", "is_error": bool(r.is_error)})
         messages.append({"role": "user", "content": results})
@@ -244,7 +246,7 @@ def _check(c: dict, store: Store, before: dict) -> CheckResult:
                  for r in rows)
         return CheckResult(rule, desc, ok, f"{len(rows)} handoffs")
     if kind == "status_changed":
-        return CheckResult(rule, desc, after["status"] != before["status"], after["status"])
+        return CheckResult(rule, desc, after["status"] != before["status"], str(after["status"]))
     if kind == "no_writes":
         changed = [t for t in c.get("tables", ["tasks", "decisions", "handoffs", "memories",
                                                  "projects"]) if after[t] != before[t]]

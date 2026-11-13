@@ -99,6 +99,7 @@ def test_mirror_updates_on_change(tmp_path, monkeypatch):
 
 def test_git_hook_closes_tasks(tmp_path, monkeypatch):
     import subprocess
+
     from tether import gitlink
     from tether.store import Store
 
@@ -128,6 +129,7 @@ def test_git_hook_closes_tasks(tmp_path, monkeypatch):
 
 def test_git_hook_preserves_existing_hook(tmp_path):
     import subprocess
+
     from tether import gitlink
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     hook = tmp_path / ".git/hooks/post-commit"
@@ -155,11 +157,12 @@ def test_deep_doctor(capsys):
 
 def test_status_sees_desktop_extension(tmp_path, monkeypatch):
     import json
+
     from tether import install
     cfg = tmp_path / "claude_desktop_config.json"
     cfg.write_text("{}")
     (tmp_path / "extensions-installations.json").write_text(
         json.dumps({"extensions": {"local.mcpb.someone.tether-mcp": {}}}))
     monkeypatch.setattr(install, "desktop_config_path", lambda: cfg)
-    desk = [r for r in install.status() if r.client == "Claude Desktop"][0]
+    desk = next(r for r in install.status() if r.client == "Claude Desktop")
     assert desk.action == "installed" and "extension" in desk.detail

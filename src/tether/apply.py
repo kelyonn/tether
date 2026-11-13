@@ -8,6 +8,7 @@ user copies it and runs `tether apply`. Every line maps to one store call.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from tether.store import Store, TetherError, parse_ref, parse_task_id
@@ -21,7 +22,7 @@ SURFACE_WORDS = {"code", "desktop", "cowork", "chat", "design", "any"}
 class Op:
     verb: str
     line: str
-    run: object = None  # callable(store, pid, surface) -> str
+    run: Callable[..., str] | None = None  # (store, pid, surface) -> str
 
 
 @dataclass
@@ -42,7 +43,9 @@ def extract_block(text: str) -> tuple[str | None, list[str]]:
     if start is None:
         body, project = lines, None
     else:
-        project = HEADER_RE.match(lines[start]).group("project")
+        header = HEADER_RE.match(lines[start])
+        assert header is not None  # `start` was found with the same pattern
+        project = header.group("project")
         body = lines[start + 1:]
     out = []
     for line in body:
@@ -145,6 +148,7 @@ def apply(store: Store, pid: int, parsed: Parsed, surface: str) -> list[str]:
     out = []
     for op in parsed.ops:
         try:
+            assert op.run is not None
             out.append("ok  " + op.run(store, pid, surface))
         except TetherError as e:
             out.append(f"err {op.line}: {e}")

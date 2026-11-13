@@ -12,9 +12,9 @@ import secrets as pysecrets
 import threading
 import time
 import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from urllib.parse import parse_qs, urlparse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from tether.render import ago
 from tether.store import Store, TetherError

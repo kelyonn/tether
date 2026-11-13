@@ -125,7 +125,7 @@ class Syncer:
         self._deferred: set[tuple[str, str]] | None = None
 
     @classmethod
-    def from_config(cls, store: Any) -> "Syncer | None":
+    def from_config(cls, store: Any) -> Syncer | None:
         d = config.load_config().get("sync_dir")
         return cls(store, d, machine_id()) if d else None
 
@@ -361,7 +361,7 @@ class Syncer:
         try:
             self.db.execute("UPDATE sync_flags SET applying=1")
             self._retry: list[dict] = []
-            self._deferred: set[tuple[str, str]] | None = set()
+            self._deferred = set()
             for op, _m in batch:
                 applied += self._apply(op)
                 for t in [op.get("ts", ""), *(op.get("ft") or {}).values()]:
@@ -417,6 +417,7 @@ class Syncer:
         if tbl == "projects":
             fields = {k: v for k, v in fields.items() if k != "root_path"}  # bindings are per Mac
         luid = self._uid_of(tbl, rid)
+        assert luid is not None  # the row was just looked up or inserted
         known = dict(self.db.execute("SELECT field, ts FROM sync_fields WHERE tbl=? AND uid=?",
                                      (tbl, luid)).fetchall())
         win = {k: v for k, v in fields.items() if fts[k] > known.get(k, "")}
@@ -447,6 +448,7 @@ class Syncer:
         if rid is None:
             return
         luid = self._uid_of(tbl, rid)
+        assert luid is not None
         for k, v in f.items():
             if not (k in FKS[tbl] or (tbl == "handoffs" and k == "task_ids")):
                 continue
@@ -483,6 +485,7 @@ class Syncer:
                                   tuple(vals.values()))
         except sqlite3.IntegrityError:
             return 0  # incomplete row (e.g. a journal that starts mid-history); skip
+        assert cur.lastrowid is not None
         self._record(tbl, uid, cur.lastrowid, fts)
         return 1
 
