@@ -144,3 +144,14 @@ def test_cli_export_and_import(store, tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("TETHER_HOME", str(tmp_path / "other-home"))
     assert main(["import", str(out)]) == 0
     assert "Restored" in capsys.readouterr().out
+
+
+def test_doctor_blames_the_ledger_not_the_install(store, capsys, monkeypatch):
+    from tether import install
+    monkeypatch.setattr(install, "status", lambda: [])
+    store.add_memory("Idea", "x")
+    store.db.execute("DELETE FROM search_idx")
+    assert main(["doctor"]) == 1
+    out = capsys.readouterr().out
+    assert "Problems found in the ledger" in out and "doctor --fix" in out
+    assert "tether install" not in out

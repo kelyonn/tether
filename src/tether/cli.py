@@ -401,7 +401,8 @@ def cmd_doctor(args) -> int:
             print("  nothing here can be fixed automatically")
     elif any(not f.ok and f.fix for f in findings):
         print("  Some of these can be repaired: run `tether doctor --fix`.")
-    bad = bad or not all(f.ok for f in findings)
+    ledger_bad = not all(f.ok for f in findings)
+    bad = bad or ledger_bad
     if args.deep:
         from tether import selftest
         print("\ndeep check (temporary store, real server over stdio):")
@@ -410,7 +411,13 @@ def cmd_doctor(args) -> int:
             print(f"  {'ok  ' if c.ok else 'FAIL'} {c.name}" + (f" — {c.detail}" if c.detail else ""))
         bad = bad or not all(c.ok for c in checks)
     if bad:
-        print("\nProblems found. Re-run `tether install` to repair a stale install.")
+        if ledger_bad:
+            print("\nProblems found in the ledger (above)."
+                  + ("" if getattr(args, "fix", False) else " `tether doctor --fix` repairs what it can."))
+        if any(r.action in ("error", "stale") for r in install.status()):
+            print("\nA client install is stale. Re-run `tether install` to repair it.")
+        elif not ledger_bad:
+            print("\nProblems found. Run `tether doctor --deep` for details.")
     return 1 if bad else 0
 
 
