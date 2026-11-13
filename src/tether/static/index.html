@@ -416,7 +416,7 @@ function renderSide(){
     <a class="nav ${route.v==="ideas"?"on":""}" href="#/ideas"><span class="ic">${I.inbox}</span><span class="lbl">Ideas inbox</span>${nIdeas?`<span class="count">${nIdeas}</span>`:""}</a>
     <a class="nav ${route.v==="archive"?"on":""}" href="#/archive"><span class="ic">${I.archive}</span><span class="lbl">Archive</span>${S.archived.length?`<span class="count">${S.archived.length}</span>`:""}</a>
     <div class="nav-label">Projects</div>
-    ${focused()?`<button class="nav on" data-act="unfocus" title="Show every active project again"><span class="ic">${I.x}</span><span class="lbl">Focused · show all ${S.projects.length}</span></button>`:""}
+    ${focused()?`<button class="nav on" data-act="unfocus" style="width:100%;justify-content:flex-start;text-align:left" title="Show every active project again"><span class="ic">${I.x}</span><span class="lbl">Focused · show all ${S.projects.length}</span></button>`:""}
     ${shown().map(p=>`<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
       <span class="ic"><span class="pdot" style="background:${pcolor(p.slug)}"></span></span><span class="lbl">${esc(p.name)}</span>
       ${p.code_doing?`<span class="pulse on" title="Claude Code is working"></span>`:p.open?`<span class="count">${p.open}</span>`:""}</a>`).join("") || `<div class="nav muted" style="font-size:12.5px">No projects yet</div>`}
