@@ -278,7 +278,7 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const SURF = {code:"Code", chat:"Chat", cli:"You", desktop:"Desktop", design:"Design", cowork:"Cowork", any:"Anyone"};
 const PCOLORS = ["#6e56cf","#12a594","#e5484d","#3e63dd","#f76b15","#d6409f","#46a758","#0090ff"];
 
-let S = null, marker = "", online = true, route = parseRoute(), openGroups = {done:false}, seenEvents = new Set(), firstLoad = true;
+let focus = loadFocus(), S = null, marker = "", online = true, route = parseRoute(), openGroups = {done:false}, seenEvents = new Set(), firstLoad = true;
 let drawerId = null, drawerEdit = false;
 
 /* ---------- icons ---------- */
@@ -307,6 +307,11 @@ function stIcon(s){
 }
 
 /* ---------- helpers ---------- */
+function loadFocus(){ try{ return localStorage.getItem("tether.focus")||null; }catch(e){ return null; } }
+function setFocus(slug){ focus=slug||null; try{ slug?localStorage.setItem("tether.focus",slug):localStorage.removeItem("tether.focus"); }catch(e){} render(); }
+/* Every active project, unless one is focused (and still exists). */
+function shown(){ const f=focus&&proj(focus); return f?[f]:S.projects; }
+function focused(){ return focus&&proj(focus)?proj(focus):null; }
 function parseRoute(){ const h=location.hash.replace(/^#\/?/,""); const [a,b]=h.split("/"); return a==="p"&&b?{v:"project",slug:decodeURIComponent(b)}:a==="ideas"?{v:"ideas"}:{v:"home"}; }
 function go(h){ if(location.hash!==h) location.hash=h; else { route=parseRoute(); render(); } }
 function pcolor(slug){ const p=proj(slug); if(p) return PCOLORS[(p.id-1)%PCOLORS.length]; let h=0; for(const c of slug) h=(h*31+c.charCodeAt(0))>>>0; return PCOLORS[h%PCOLORS.length]; }
@@ -398,7 +403,8 @@ function renderSide(){
     <a class="nav ${route.v==="home"?"on":""}" href="#/"><span class="ic">${I.home}</span><span class="lbl">Overview</span></a>
     <a class="nav ${route.v==="ideas"?"on":""}" href="#/ideas"><span class="ic">${I.inbox}</span><span class="lbl">Ideas inbox</span>${nIdeas?`<span class="count">${nIdeas}</span>`:""}</a>
     <div class="nav-label">Projects</div>
-    ${S.projects.map(p=>`<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
+    ${focused()?`<button class="nav on" data-act="unfocus" title="Show every active project again"><span class="ic">${I.x}</span><span class="lbl">Focused · show all ${S.projects.length}</span></button>`:""}
+    ${shown().map(p=>`<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
       <span class="ic"><span class="pdot" style="background:${pcolor(p.slug)}"></span></span><span class="lbl">${esc(p.name)}</span>
       ${p.code_doing?`<span class="pulse on" title="Claude Code is working"></span>`:p.open?`<span class="count">${p.open}</span>`:""}</a>`).join("") || `<div class="nav muted" style="font-size:12.5px">No projects yet</div>`}
     <div class="sync ${online&&!(S.sync&&S.sync.error)?"":"off"}" title="${esc(syncTitle())}"><i></i><span>${syncLabel()}</span></div>`;
@@ -421,7 +427,7 @@ function syncTitle(){
 function viewMissing(){ return `<div class="page"><div class="crumb"><a href="#/">Overview</a></div><h1>Project not found</h1><p class="goal">It may have been archived or renamed. <a href="#/">Back to overview</a></p></div>`; }
 
 function viewHome(){
-  const ps = S.projects, live = ps.filter(p=>p.code_doing);
+  const ps = shown(), live = ps.filter(p=>p.code_doing);
   const sub = ps.length ? [plural(ps.length,"project"), live.length?`Claude Code active in ${live.map(p=>esc(p.name)).join(", ")}`:null, S.inbox.length?plural(S.inbox.length,"unfiled idea"):null].filter(Boolean).join(" · ") : "Nothing here yet.";
   const events = ps.flatMap(p=>p.events).sort((a,b)=>b.ts.localeCompare(a.ts)||b.id-a.id).slice(0,18);
   return `<div class="page">
@@ -461,6 +467,7 @@ function viewProject(p){
     <div class="goal"><span class="edit-hint" data-act="edit-goal" title="Click to edit the goal">${p.goal?esc(p.goal):'<span class="muted">Add a goal…</span>'}</span></div>
     <div class="statusline">
       <button class="status-pill" data-act="edit-status" title="Set where things stand now"><span class="muted">Status</span><b>${esc(p.status||"Not set")}</b></button>
+      <button class="btn sm" data-act="${focus===p.slug?"unfocus":"focus"}" data-p="${esc(p.slug)}" title="${focus===p.slug?"Show every active project again":"Show only this project in the sidebar and overview"}">${focus===p.slug?"Focused · show all":"Focus on this"}</button>
       <div class="meta">${p.root?`<span class="mono" title="${esc(p.root)}">${esc(home(p.root))}</span>`:""}<span>Updated ${esc(p.updated)}</span></div>
     </div>
     <div class="grid"><div class="stack">
@@ -619,6 +626,8 @@ document.addEventListener("click", e => {
   else if (a==="handoff") post({action:"handoff_status",id,status:el.dataset.s}, el.dataset.s==="done"?`Handoff h${id} delivered`:`Accepted h${id}`);
   else if (a==="open-idea") openIdea(id);
   else if (a==="close") closeDrawer();
+  else if (a==="focus") setFocus(el.dataset.p);
+  else if (a==="unfocus") setFocus(null);
   else if (a==="attach") post({action:"attach",id,project:el.dataset.p}, `Attached to ${proj(el.dataset.p)?.name||el.dataset.p}`);
   else if (a==="archive"){ closeDrawer(); post({action:"archive_memory",id}, "Idea archived", ()=>post({action:"archive_memory",id,archived:false},"Idea restored")); }
   else if (a==="toggle-edit"){ drawerEdit=!drawerEdit; renderDrawer(); if(drawerEdit) $("#drbody")?.focus(); }

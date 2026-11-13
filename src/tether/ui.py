@@ -237,7 +237,8 @@ def serve(port: int = PORT, open_browser: bool = True) -> None:
 # -- terminal dashboard ----------------------------------------------------------------
 
 def render_watch(snap: dict, only: str | None = None) -> str:
-    L = ["\033[1mTether\033[0m live — Ctrl-C to quit", ""]
+    scope = f"focused on {only}" if only else "all active projects"
+    L = [f"\033[1mTether\033[0m live — {scope} — Ctrl-C to quit", ""]
     for p in snap["projects"]:
         if only and p["slug"] != only:
             continue
