@@ -22,6 +22,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 
+- New logo, "one thread": a single continuous loop with an amber knot where it crosses. It is in the live view, the browser tab icon, the README banner and the Desktop extension (`extension/icon.png`, rendered from `docs/readme/logo.svg` by `scripts/render_logo.py`).
 - The live view overview is tighter: projects with open work are cards that show what is in progress or next, the status, open and P1 counts, handoffs and last activity, ranked by what needs attention; quiet projects fold into a compact list. The sidebar does the same. Each project page gets a facts strip (open, in progress, P1, blocked, done, handoffs, decisions, ideas, last active).
 - The store is now a package of focused modules; imports and behavior are unchanged.
 - CI gains lint (ruff), type (mypy) and coverage gates, a lockfile check and a browser-test job.

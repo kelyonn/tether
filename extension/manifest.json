@@ -2,6 +2,7 @@
   "manifest_version": "0.4",
   "name": "tether-mcp",
   "display_name": "Tether",
+  "icon": "icon.png",
   "version": "0.4.0",
   "description": "One memory and project ledger shared by every Claude surface.",
   "long_description": "Tether keeps ideas, decisions, tasks and handoffs in one local SQLite file, so Claude Desktop, Cowork, Code and Chat work from the same state. No cloud service and no API key; secrets are blocked from being stored.",

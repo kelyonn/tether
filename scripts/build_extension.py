@@ -23,6 +23,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.write(root / "pyproject.toml", "pyproject.toml")
     z.write(root / "README.md", "README.md")
     z.write(root / "LICENSE", "LICENSE")
+    z.write(root / "extension" / "icon.png", "icon.png")
     for p in sorted((root / "src" / "tether").rglob("*")):
         if p.is_file() and "__pycache__" not in p.parts:
             z.write(p, p.relative_to(root).as_posix())

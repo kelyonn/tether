@@ -202,3 +202,10 @@ def test_sidebar_folds_quiet_projects_but_keeps_the_current_one(page, seeded):
     page.reload()
     page.wait_for_selector("#side .brand")
     assert side_projects(page) == ["Alpha", "Beta", "Idle 3"]        # the open page stays visible
+
+
+def test_brand_mark_and_favicon_are_the_thread_logo(page):
+    expect(page.locator("#side .brand svg path")).to_have_count(1)
+    expect(page.locator("#side .brand svg circle")).to_have_count(1)         # the amber knot
+    icon = page.locator("link[rel=icon]").get_attribute("href")
+    assert icon.startswith("data:image/svg+xml,") and "e8a87c" in icon
