@@ -50,10 +50,14 @@ kbd{font:500 10.5px var(--mono);color:var(--ink-3);border:1px solid var(--line);
 .nav .count{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
 .nav .ic{width:16px;display:grid;place-items:center;color:var(--ink-3)}
 .pdot{width:8px;height:8px;border-radius:3px;flex:none}
-.sync{margin-top:auto;padding:10px 8px 2px;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-3);cursor:default}
+.syncs{margin-top:auto}
+.sync{padding:6px 8px 2px;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-3);cursor:default}
 .sync span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sync i{flex:none}
 .sync i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
+.sync.gh{background:none;border:0;width:100%;text-align:left;font:inherit;font-size:12px;cursor:pointer}
+.sync.gh:hover{color:var(--ink)}
+.sync.gh.busy i{background:var(--amber);box-shadow:0 0 0 3px color-mix(in srgb,var(--amber) 22%,transparent)}
 .sync.off i{background:var(--red);box-shadow:0 0 0 3px var(--red-soft)}
 
 main{overflow:auto;scroll-behavior:smooth}
@@ -269,7 +273,7 @@ textarea.body:focus{border-color:var(--accent)}
   aside{flex-direction:row;align-items:center;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:8px 10px;gap:4px}
   .brand{padding:0 8px 0 4px}.brand span,.nav-label,.sync span{display:none}
   .search-btn{width:auto;margin:0}.search-btn .lbl,.search-btn kbd{display:none}
-  .nav{flex:none}.sync{margin:0 0 0 auto;padding:0 6px}
+  .nav{flex:none}.syncs{margin:0 0 0 auto;display:flex}.sync{margin:0;padding:0 6px}
   .page{padding:20px 16px 60px}
   .row .hover-acts{display:flex}
   .row .right .mono,.row .right .ago,.row:hover .ago{display:none}
@@ -425,6 +429,21 @@ function render(){
 }
 function isFresh(e){ return !firstLoad && !seenEvents.has(e.id); }
 
+function ghLabel(){
+  const g = S.github; if (!g) return "GitHub";
+  if (g.running) return "Syncing GitHub…";
+  if (g.error) return g.last ? `GitHub sync failed · last ${since(g.last)}` : "GitHub sync failed";
+  return g.last ? `GitHub synced ${since(g.last)}` : "GitHub not synced yet";
+}
+function ghTitle(){
+  const g = S.github; if (!g) return "";
+  const every = g.hours>0 ? `Syncs on its own every ${g.hours} hour${g.hours===1?"":"s"}.` : "Automatic sync is off (set github_sync_hours in the config).";
+  return (g.error ? `Last attempt failed: ${g.error}\n` : "") + every + "\nClick to sync now.";
+}
+function ghButton(){
+  const g = S.github; if (!g) return "";
+  return `<button class="sync gh ${g.running?"busy":g.error?"off":""}" data-act="gh-sync" title="${esc(ghTitle())}"><i></i><span>${esc(ghLabel())}</span></button>`;
+}
 function sideLink(p){
   return `<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
       <span class="ic"><span class="pdot" style="background:${pcolor(p.slug)}"></span></span><span class="lbl">${esc(p.name)}</span>
@@ -456,7 +475,10 @@ function renderSide(){
     <div class="nav-label">Projects</div>
     ${focused()?`<button class="nav on" data-act="unfocus" style="width:100%;justify-content:flex-start;text-align:left" title="Show every active project again"><span class="ic">${I.x}</span><span class="lbl">Focused · show all ${S.projects.length}</span></button>`:""}
     ${sideProjects()}
-    <div class="sync ${online&&!(S.sync&&S.sync.error)?"":"off"}" title="${esc(syncTitle())}"><i></i><span>${syncLabel()}</span></div>`;
+    <div class="syncs">
+      ${ghButton()}
+      <div class="sync ${online&&!(S.sync&&S.sync.error)?"":"off"}" title="${esc(syncTitle())}"><i></i><span>${syncLabel()}</span></div>
+    </div>`;
 }
 
 function macName(m){ return String(m).replace(/-[0-9a-f]{6}$/,""); }
@@ -732,6 +754,7 @@ document.addEventListener("click", e => {
   else if (a==="open-idea") openIdea(id);
   else if (a==="close") closeDrawer();
   else if (a==="restore"){ const m=el.dataset.type==="idea"; post(m?{action:"restore_memory",id}:{action:"restore_project",project:el.dataset.p}, `${m?"Idea":"Project"} restored`); }
+  else if (a==="gh-sync"){ if(S&&S.github&&S.github.running) return; post({action:"github_sync"}, "Syncing with GitHub…"); }
   else if (a==="focus") setFocus(el.dataset.p);
   else if (a==="unfocus") setFocus(null);
   else if (a==="attach") post({action:"attach",id,project:el.dataset.p}, `Attached to ${proj(el.dataset.p)?.name||el.dataset.p}`);
@@ -779,6 +802,7 @@ document.addEventListener("keydown", e => {
   if (e.key==="c" && route.v==="project"){ e.preventDefault(); $("#newtask")?.focus(); }
   if (e.key==="/"){ e.preventDefault(); openPal(); }
 });
+setInterval(()=>{ if(S) renderSide(); }, 60000);   // keep "synced 12m ago" fresh
 window.addEventListener("hashchange", () => { route=parseRoute(); closeDrawer(); $("#main").scrollTop=0; render(); });
 
 load(true);

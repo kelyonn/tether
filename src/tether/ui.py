@@ -16,7 +16,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from urllib.parse import parse_qs, urlparse
 
+from tether import github
 from tether.render import ago
+from tether.scheduler import GithubScheduler
 from tether.store import Store, TetherError
 
 PORT = 7878
@@ -66,7 +68,12 @@ def snapshot(store: Store) -> dict:
                   "auto": p["archived"] == 2, "ago": ago(p["updated_at"])} for p in gone["projects"]]
                 + [{"type": "idea", "id": m["id"], "title": m["title"], "project": m["project_slug"],
                     "auto": m["archived"] == 2, "ago": ago(m["updated_at"])} for m in gone["memories"]])
-    return {"projects": projects, "sync": sync_info, "archived": archived,
+    last = github.get_state(store, "github_last_sync")
+    gh_info = {"last": int(last) if last else None,
+               "running": github.get_state(store, "github_running") == "1",
+               "error": github.get_state(store, "github_error") or None,
+               "hours": github.sync_hours()}
+    return {"projects": projects, "sync": sync_info, "archived": archived, "github": gh_info,
             "inbox": [_mem(m, store) for m in box["fresh"]],
             "older": [_mem(m, store) for m in box["older"]],
             "marker": list(store.change_marker())}
@@ -167,7 +174,8 @@ def already_running(port: int = PORT) -> bool:
         return False
 
 
-def make_server(store: Store, port: int = PORT) -> tuple[ThreadingHTTPServer, str]:
+def make_server(store: Store, port: int = PORT,
+                scheduler: GithubScheduler | None = None) -> tuple[ThreadingHTTPServer, str]:
     """Build the live-view HTTP server (not started). Returns (server, write token)."""
     lock = threading.Lock()
     token = pysecrets.token_urlsafe(24)
@@ -226,6 +234,11 @@ def make_server(store: Store, port: int = PORT) -> tuple[ThreadingHTTPServer, st
                 return self._send(404, b"{}")
             try:
                 req = json.loads(raw or b"{}")
+                if req.get("action") == "github_sync":
+                    if scheduler is None:
+                        raise TetherError("GitHub sync is not running in this view")
+                    started = scheduler.run_now()
+                    return self._send(200, json.dumps({"ok": True, "started": started}).encode())
                 with lock:
                     act(store, req)
                 self._send(200, b'{"ok":true}')
@@ -237,7 +250,9 @@ def make_server(store: Store, port: int = PORT) -> tuple[ThreadingHTTPServer, st
 
 def serve(port: int = PORT, open_browser: bool = True) -> None:
     store = Store()
-    httpd, _token = make_server(store, port)
+    scheduler = GithubScheduler()
+    scheduler.start()
+    httpd, _token = make_server(store, port, scheduler)
     url = f"http://127.0.0.1:{port}"
     print(f"Tether live view: {url}  (Ctrl-C to stop)", flush=True)
     if open_browser:
@@ -247,6 +262,7 @@ def serve(port: int = PORT, open_browser: bool = True) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        scheduler.stop()
         httpd.server_close()
 
 

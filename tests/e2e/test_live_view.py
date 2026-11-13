@@ -218,3 +218,24 @@ def test_recent_edits_show_the_project_as_live_with_the_edit_in_the_feed(page, s
     page.wait_for_selector("#side .brand")
     expect(page.locator(".pcard", has_text="Alpha")).to_contain_text("Code working")
     expect(page.locator("body")).to_contain_text("edited logo.svg")
+
+
+def test_github_sync_status_and_the_sync_now_button(page, seeded):
+    expect(page.locator(".sync.gh")).to_contain_text("GitHub not synced yet")
+    from tether import github
+    github.set_state(seeded, "github_last_sync", str(int(__import__("time").time()) - 7200))
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    expect(page.locator(".sync.gh")).to_contain_text("GitHub synced 2h ago")
+    page.locator(".sync.gh").click()
+    expect(page.locator("body")).to_contain_text("Syncing with GitHub")
+    assert page.sched.calls == 1
+
+
+def test_a_failed_github_sync_is_visible(page, seeded):
+    from tether import github
+    github.set_state(seeded, "github_error", "gh is not logged in")
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    expect(page.locator(".sync.gh")).to_contain_text("GitHub sync failed")
+    assert "gh is not logged in" in page.locator(".sync.gh").get_attribute("title")

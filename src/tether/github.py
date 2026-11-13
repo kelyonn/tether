@@ -15,11 +15,13 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tether import config
 from tether.errors import TetherError
 from tether.store import Store
 
@@ -30,6 +32,8 @@ WRITE_ACCESS = {"WRITE", "MAINTAIN", "ADMIN"}
 CHUNK = 20
 PULL_TASK_AT = 3            # being 1-2 commits behind is noted in the status, not made a task
 BRIEF_PREFIX = "GitHub:"
+DEFAULT_SYNC_HOURS = 3.0        # how often the live view re-reads GitHub on its own
+MIN_SYNC_HOURS = 0.25
 
 
 @dataclass
@@ -267,9 +271,46 @@ def apply(store: Store, local: Local, remote: Remote | None, dr: Drift | None, v
     return rep
 
 
+def sync_hours() -> float:
+    """Hours between automatic syncs (`github_sync_hours` in the config; 0 turns them off)."""
+    try:
+        h = float(config.load_config().get("github_sync_hours", DEFAULT_SYNC_HOURS))
+    except (TypeError, ValueError):
+        return DEFAULT_SYNC_HOURS
+    return 0.0 if h <= 0 else max(h, MIN_SYNC_HOURS)
+
+
+def set_state(store: Store, key: str, value: str) -> None:
+    store.db.execute("INSERT INTO local_state (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+def get_state(store: Store, key: str) -> str | None:
+    row = store.db.execute("SELECT value FROM local_state WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
 def sync(store: Store, only: str | None = None, dry_run: bool = False,
          gh: Gh | None = None) -> list[Report]:
-    """Reconcile every bound project with GitHub. Returns one Report per project."""
+    """Reconcile every bound project with GitHub. Returns one Report per project. A real
+    run also records when it finished (or why it failed) for the live view to show."""
+    if dry_run:
+        return _sync(store, only, True, gh)
+    set_state(store, "github_running", "1")
+    try:
+        reports = _sync(store, only, False, gh)
+    except Exception as e:
+        set_state(store, "github_error", str(e)[:300] or type(e).__name__)
+        raise
+    else:
+        set_state(store, "github_error", "")
+        set_state(store, "github_last_sync", str(int(time.time())))
+        return reports
+    finally:
+        set_state(store, "github_running", "0")
+
+
+def _sync(store: Store, only: str | None, dry_run: bool, gh: Gh | None) -> list[Report]:
     gh = gh or run_gh
     locals_: list[Local] = []
     for p in store.projects():

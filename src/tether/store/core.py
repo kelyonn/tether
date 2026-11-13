@@ -188,6 +188,8 @@ class CoreMixin(StoreBase):
                 q("SELECT coalesce(max(updated_at),'') FROM tasks"),
                 q("SELECT count(*) FROM memories WHERE archived=0"),
                 q("SELECT count(*) FROM projects WHERE archived=0"),
+                q("SELECT coalesce(group_concat(value, '|'), '') FROM local_state "
+                  "WHERE key LIKE 'github_%'"),
                 q("SELECT coalesce(max(updated_at),'') FROM projects"),
                 q("SELECT coalesce(max(updated_at),'') FROM handoffs"),
                 q("SELECT count(*) FROM decisions"))

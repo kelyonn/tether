@@ -143,6 +143,8 @@ tether watch -p shop      # the same in the terminal, read-only, for one project
 
 Press `?` for the keyboard shortcuts: `/` search, `c` capture an idea, `g` then `o` / `i` / `a` to go to the overview, ideas or archive, and `f` to focus.
 
+Tether keeps itself accurate against GitHub: the live view reads your repositories (through the `gh` CLI you are already logged in with) 30 seconds after it starts and then every 3 hours, and updates each project's status, branch state, issues and pull requests. The sidebar shows when it last synced, and clicking it syncs now. Change the interval with `github_sync_hours` in `~/.tether/config.json` (0 turns it off); `tether github` does the same thing by hand.
+
 The overview shows every active project, with what each surface is doing right now. When you want one project only, press **Focus on this** on its page: the sidebar and the overview narrow to it, and the choice is remembered in your browser. **Focused · show all** in the sidebar brings the rest back. `tether watch` shows every project unless you pass `-p`.
 
 ## Auto-archive

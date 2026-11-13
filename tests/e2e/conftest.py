@@ -33,9 +33,20 @@ def seeded(store):
     return store
 
 
+class FakeScheduler:
+    """Stands in for the GitHub scheduler so the page's Sync now button can be tested."""
+    def __init__(self):
+        self.calls = 0
+
+    def run_now(self):
+        self.calls += 1
+        return True
+
+
 @pytest.fixture
 def page(browser, seeded):
-    httpd, _token = make_server(seeded, 0)
+    sched = FakeScheduler()
+    httpd, _token = make_server(seeded, 0, sched)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     ctx = browser.new_context(viewport={"width": 1280, "height": 800})
     pg = ctx.new_page()
@@ -44,6 +55,7 @@ def page(browser, seeded):
     pg.goto(f"http://127.0.0.1:{httpd.server_address[1]}/")
     pg.wait_for_selector("#side .brand")
     pg.js_errors = errors
+    pg.sched = sched
     yield pg
     ctx.close()
     httpd.shutdown()
