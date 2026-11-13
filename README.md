@@ -14,6 +14,8 @@
     <a href="#the-context-pack">THE CONTEXT PACK</a> &nbsp;·&nbsp;
     <a href="#install">INSTALL</a> &nbsp;·&nbsp;
     <a href="#use">USE</a> &nbsp;·&nbsp;
+    <a href="#live-view">LIVE VIEW</a> &nbsp;·&nbsp;
+    <a href="#auto-archive">AUTO-ARCHIVE</a> &nbsp;·&nbsp;
     <a href="#surfaces-without-mcp">SURFACES WITHOUT MCP</a> &nbsp;·&nbsp;
     <a href="#two-macs">TWO MACS</a>
   </sub>
@@ -27,7 +29,7 @@
     <td><sub>STORAGE</sub><br><b>Local, on your machine</b></td>
     <td><sub>INTERFACE</sub><br><b>MCP server + CLI</b></td>
     <td><sub>SECRETS</sub><br><b>Refused on every write</b></td>
-    <td><sub>TESTS</sub><br><b>81</b></td>
+    <td><sub>TESTS</sub><br><b>207</b></td>
   </tr>
 </table>
 
@@ -122,7 +124,36 @@ From there the bookkeeping happens as you work. The server ships its own rules: 
 | `tether search stripe` · `show d3` · `log` | history |
 | `tether remember` · `recall` · `attach` · `promote` | ideas, with or without a project |
 | `tether git install` | "fixes t12" in a commit closes the task |
-| `tether ui` | an editable live view on localhost |
+| `tether ui` · `watch -p shop` | the live view, in the browser or the terminal |
+| `tether sweep [--dry-run]` | archive what has gone unused |
+
+</details>
+
+## Live view
+
+```bash
+tether ui                 # an editable live view on localhost
+tether watch -p shop      # the same in the terminal, read-only, for one project
+```
+
+The overview shows every active project, with what each surface is doing right now. When you want one project only, press **Focus on this** on its page: the sidebar and the overview narrow to it, and the choice is remembered in your browser. **Focused · show all** in the sidebar brings the rest back. `tether watch` shows every project unless you pass `-p`.
+
+## Auto-archive
+
+```bash
+tether sweep --dry-run    # see what would be archived, change nothing
+```
+
+Ideas and projects nobody has touched for 30 days are archived, so lists and the context pack stay small. Nothing is deleted. Ask for one again (`recall`, `show`, naming the project, or working in its folder) and it comes back; if it then sits unused for 7 days it is archived again. Archiving by hand is never undone automatically.
+
+<details>
+<summary><b>Details</b></summary>
+<br>
+
+- The check runs when Tether opens, at most every 12 hours, or whenever you run `tether sweep`.
+- A project counts as in use while any task, handoff, idea or event in it is recent.
+- Last-use times are kept per Mac and are not synced. If one Mac archives something the other still uses, the next lookup on either Mac restores it.
+- Change the limits with `archive_after_days` and `rearchive_after_days` in the config. Set `archive_after_days` to `0` to turn it off.
 
 </details>
 
