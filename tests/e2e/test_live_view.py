@@ -134,3 +134,71 @@ def test_archive_page_lists_and_restores(page, seeded):
 def test_empty_archive_explains_itself(page):
     page.goto(page.url.split("#")[0] + "#/archive")
     expect(page.locator("body")).to_contain_text("Nothing is archived")
+
+
+def test_overview_separates_active_projects_from_quiet_ones(page, seeded):
+    seeded.create_project("Sleepy", "nothing open here")
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    expect(page.locator(".pcard")).to_have_count(2)                 # alpha and beta have tasks
+    expect(page.locator(".qrow")).to_have_count(1)                  # sleepy sits in the quiet list
+    expect(page.locator(".qrow")).to_contain_text("Sleepy")
+    expect(page.locator("body")).to_contain_text("Quiet")
+
+
+def test_a_card_shows_what_is_happening_in_the_project(page, seeded):
+    pid = seeded.find_project("alpha")["id"]
+    t = seeded.tasks(pid)[0]
+    seeded.update_task(t["id"], status="doing")
+    seeded.add_task(pid, "urgent thing", priority=1)
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    card = page.locator(".pcard", has_text="Alpha")
+    expect(card).to_contain_text("In progress")
+    expect(card).to_contain_text("alpha task one")
+    expect(card).to_contain_text("2 open")
+    expect(card).to_contain_text("P1 ×1")
+
+
+def test_long_lists_collapse_and_expand(page, seeded):
+    for i in range(12):
+        p = seeded.create_project(f"Busy {i}", "g")
+        seeded.add_task(p["id"], f"task {i}")
+    for i in range(14):
+        seeded.create_project(f"Idle {i}", "g")
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    expect(page.locator(".pcard")).to_have_count(8)
+    expect(page.locator(".qrow")).to_have_count(9)
+    page.get_by_role("button", name="Show all 14 with open work").click()
+    expect(page.locator(".pcard")).to_have_count(14)
+    page.get_by_role("button", name="Show all 14 quiet projects").click()
+    expect(page.locator(".qrow")).to_have_count(14)
+    page.get_by_role("button", name="Show fewer").first.click()
+    expect(page.locator(".pcard")).to_have_count(8)
+
+
+def test_project_page_has_a_facts_strip(page, seeded):
+    pid = seeded.find_project("beta")["id"]
+    seeded.add_decision(pid, "Use Postgres", "familiar")
+    page.goto(page.url.split("#")[0] + "#/p/beta")
+    page.reload()
+    facts = page.locator(".facts")
+    expect(facts).to_contain_text("open")
+    expect(facts).to_contain_text("1decision")
+    expect(facts).to_contain_text("active")
+
+
+def test_sidebar_folds_quiet_projects_but_keeps_the_current_one(page, seeded):
+    for i in range(5):
+        seeded.create_project(f"Idle {i}", "g")
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    assert side_projects(page) == ["Alpha", "Beta"]
+    page.get_by_role("button", name="5 quiet").click()
+    assert len(side_projects(page)) == 7
+    page.get_by_role("button", name="Hide quiet projects").click()
+    page.goto(page.url.split("#")[0] + "#/p/idle-3")
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    assert side_projects(page) == ["Alpha", "Beta", "Idle 3"]        # the open page stays visible

@@ -170,7 +170,26 @@ button.st:hover{transform:scale(1.12)}button.st{transition:transform .12s}
 .pcard:hover{border-color:var(--line-2)}
 .pcard .top{display:flex;align-items:center;gap:8px}
 .pcard .nm{font-weight:600;letter-spacing:-.01em;font-size:14.5px}
-.pcard .stt{color:var(--ink-2);font-size:13px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:39px}
+.pcard .stt{color:var(--ink-3);font-size:12.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pcard .now{display:flex;gap:7px;align-items:baseline;font-size:13px;color:var(--ink);min-width:0}
+.pcard .now b{font-weight:500;color:var(--ink-3);font-size:11.5px;flex:none}
+.pcard .now span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .now.doing b{color:var(--amber)}
+.pchips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:2px}
+.pchips .ago{margin-left:auto;font-size:12px;color:var(--ink-3)}
+.chip.p1{color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--line));background:color-mix(in srgb,var(--red) 8%,transparent)}
+.chip.hand{color:var(--accent-ink)}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 18px;margin-top:6px}
+.qrow{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px;color:var(--ink-2);text-decoration:none;font-size:13px;min-width:0}
+.qrow:hover{background:var(--sunken);color:var(--ink)}
+.qrow .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qrow .ago{margin-left:auto;color:var(--ink-4);font-size:11.5px;flex:none}
+.sec-more{display:inline-block;margin-top:10px;font-size:12.5px;color:var(--ink-3);background:none;border:0;cursor:pointer;padding:4px 2px}
+.sec-more:hover{color:var(--ink)}
+.facts{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--ink-3)}
+.facts b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;margin-right:4px}
+.facts .hot b{color:var(--red)}
+.facts .live b{color:var(--amber)}
 .bar{height:4px;border-radius:4px;background:var(--sunken);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--green);border-radius:4px}
 .pcard .ft{display:flex;gap:10px;font-size:12px;color:var(--ink-3);align-items:center}
@@ -406,6 +425,25 @@ function render(){
 }
 function isFresh(e){ return !firstLoad && !seenEvents.has(e.id); }
 
+function sideLink(p){
+  return `<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
+      <span class="ic"><span class="pdot" style="background:${pcolor(p.slug)}"></span></span><span class="lbl">${esc(p.name)}</span>
+      ${p.code_doing?`<span class="pulse on" title="Claude Code is working"></span>`:p.open?`<span class="count">${p.open}</span>`:""}</a>`;
+}
+/* Projects with open work first (most pressing on top); the quiet rest folds away. The one you are viewing always shows. */
+function sideProjects(){
+  const ps = shown();
+  if (!ps.length) return `<div class="nav muted" style="font-size:12.5px">No projects yet</div>`;
+  const info = new Map(ps.map(p=>[p.slug,pstats(p)]));
+  const act = ps.filter(p=>info.get(p.slug).active).sort((a,b)=>info.get(b.slug).score-info.get(a.slug).score);
+  const quiet = ps.filter(p=>!info.get(p.slug).active);
+  const here = route.v==="project" ? route.slug : null;
+  const open = openGroups.quietSide || quiet.length<=3;
+  const showQ = open ? quiet : quiet.filter(p=>p.slug===here);
+  const hidden = quiet.length-showQ.length;
+  return act.map(sideLink).join("") + showQ.map(sideLink).join("")
+    + (quiet.length>3 ? `<button class="nav" data-act="toggle" data-g="quietSide" style="width:100%;justify-content:flex-start;text-align:left;color:var(--ink-3)"><span class="ic">${I.chev}</span><span class="lbl">${open?"Hide quiet projects":`${hidden} quiet`}</span></button>` : "");
+}
 function renderSide(){
   if (!S){ return; }
   const nIdeas = S.inbox.length;
@@ -417,9 +455,7 @@ function renderSide(){
     <a class="nav ${route.v==="archive"?"on":""}" href="#/archive"><span class="ic">${I.archive}</span><span class="lbl">Archive</span>${S.archived.length?`<span class="count">${S.archived.length}</span>`:""}</a>
     <div class="nav-label">Projects</div>
     ${focused()?`<button class="nav on" data-act="unfocus" style="width:100%;justify-content:flex-start;text-align:left" title="Show every active project again"><span class="ic">${I.x}</span><span class="lbl">Focused · show all ${S.projects.length}</span></button>`:""}
-    ${shown().map(p=>`<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
-      <span class="ic"><span class="pdot" style="background:${pcolor(p.slug)}"></span></span><span class="lbl">${esc(p.name)}</span>
-      ${p.code_doing?`<span class="pulse on" title="Claude Code is working"></span>`:p.open?`<span class="count">${p.open}</span>`:""}</a>`).join("") || `<div class="nav muted" style="font-size:12.5px">No projects yet</div>`}
+    ${sideProjects()}
     <div class="sync ${online&&!(S.sync&&S.sync.error)?"":"off"}" title="${esc(syncTitle())}"><i></i><span>${syncLabel()}</span></div>`;
 }
 
@@ -439,21 +475,67 @@ function syncTitle(){
 }
 function viewMissing(){ return `<div class="page"><div class="crumb"><a href="#/">Overview</a></div><h1>Project not found</h1><p class="goal">It may have been archived or renamed. <a href="#/">Back to overview</a></p></div>`; }
 
+/* what a project is doing right now, from its tasks and handoffs */
+function pstats(p){
+  const open = p.tasks.filter(x=>x.kind==="project"&&["todo","doing","blocked"].includes(x.status));
+  const rank = x=>(x.status==="doing"?0:x.status==="blocked"?3:1)*10+(x.priority||2);
+  const sorted = [...open].sort((a,b)=>rank(a)-rank(b));
+  const doing = open.filter(x=>x.status==="doing"), p1 = open.filter(x=>x.priority===1), blocked = open.filter(x=>x.status==="blocked");
+  const active = open.length>0 || p.code_doing>0 || p.handoffs.length>0;
+  const score = (p.code_doing?1000:0)+doing.length*100+p1.length*10+Math.min(open.length,9)+(p.handoffs.length?5:0);
+  return {open, doing, p1, blocked, next: sorted[0]||null, active, score};
+}
 function viewHome(){
   const ps = shown(), live = ps.filter(p=>p.code_doing);
-  const sub = ps.length ? [plural(ps.length,"project"), live.length?`Claude Code active in ${live.map(p=>esc(p.name)).join(", ")}`:null, S.inbox.length?plural(S.inbox.length,"unfiled idea"):null].filter(Boolean).join(" · ") : "Nothing here yet.";
-  const events = ps.flatMap(p=>p.events).sort((a,b)=>b.ts.localeCompare(a.ts)||b.id-a.id).slice(0,18);
+  const info = new Map(ps.map(p=>[p.slug,pstats(p)]));
+  const byScore = (a,b)=>info.get(b.slug).score-info.get(a.slug).score || (b.last_active||"").localeCompare(a.last_active||"");
+  const act = ps.filter(p=>info.get(p.slug).active).sort(byScore);
+  const quiet = ps.filter(p=>!info.get(p.slug).active).sort((a,b)=>(b.last_active||"").localeCompare(a.last_active||""));
+  const CARDS = 8, ROWS = 9;
+  const sub = ps.length ? [plural(ps.length,"project"), act.length&&act.length<ps.length?`${act.length} with open work`:null, live.length?`Claude Code active in ${live.map(p=>esc(p.name)).join(", ")}`:null, S.inbox.length?plural(S.inbox.length,"unfiled idea"):null].filter(Boolean).join(" · ") : "Nothing here yet.";
+  const events = ps.flatMap(p=>p.events).sort((a,b)=>b.ts.localeCompare(a.ts)||b.id-a.id).slice(0,8);
+  const showAct = openGroups.activeAll ? act : act.slice(0,CARDS), showQ = openGroups.quietAll ? quiet : quiet.slice(0,ROWS);
   return `<div class="page">
     <h1>Overview</h1><div class="h-sub">${sub}</div>
-    ${ps.length ? `<div class="pcards">${ps.map(pcard).join("")}</div>` : emptyStart()}
+    ${!ps.length ? emptyStart() : ""}
+    ${act.length ? `<div class="pcards">${showAct.map(pcard).join("")}</div>
+      ${act.length>CARDS?`<button class="sec-more" data-act="toggle" data-g="activeAll">${openGroups.activeAll?"Show fewer":`Show all ${act.length} with open work`}</button>`:""}` : (ps.length?`<div class="card empty" style="margin-top:24px">Nothing is open in any project. Add a task from a project page, or let a Claude session add them.</div>`:"")}
+    ${quiet.length ? `<div class="sec-h" style="margin-top:32px">Quiet <span class="n">${quiet.length}</span><span class="sp"></span></div>
+      <div class="qgrid">${showQ.map(qrow).join("")}</div>
+      ${quiet.length>ROWS?`<button class="sec-more" data-act="toggle" data-g="quietAll">${openGroups.quietAll?"Show fewer":`Show all ${quiet.length} quiet projects`}</button>`:""}` : ""}
     <div class="two">
       <section><div class="sec-h">Ideas inbox <span class="n">${S.inbox.length}</span><span class="sp"></span>${S.inbox.length?`<a class="link" href="#/ideas">View all</a>`:""}</div>
-        ${S.inbox.length ? S.inbox.slice(0,4).map(ideaCard).join("") : `<div class="card empty">Inbox zero. Ideas you save from Chat or Code without a project land here.</div>`}
+        ${S.inbox.length ? S.inbox.slice(0,3).map(ideaCard).join("") : `<div class="card empty">Inbox zero. Ideas you save from Chat or Code without a project land here.</div>`}
       </section>
-      <section><div class="sec-h">Across projects<span class="sp"></span></div>
+      <section><div class="sec-h">Latest activity<span class="sp"></span></div>
         <div class="tl">${events.map(e=>evRow(e,true)).join("") || `<div class="empty">No activity yet.</div>`}</div>
       </section>
     </div></div>`;
+}
+function emptyStart(){
+  return `<div class="card" style="margin-top:24px;padding:22px 24px"><div style="font-weight:600;font-size:15px">Start your first project</div>
+  <p class="muted" style="margin:6px 0 12px;max-width:60ch">In a code folder run <code class="mono">tether init --goal "…"</code>. Claude Code will load its context at every session start, and its task list will show up here live.</p></div>`;
+}
+function qrow(p){
+  return `<a class="qrow" href="#/p/${encodeURIComponent(p.slug)}" title="${esc(p.goal||p.status||"")}"><span class="pdot" style="background:${pcolor(p.slug)}"></span><span class="nm">${esc(p.name)}</span><span class="ago">${esc(p.last_active_ago||"")}</span></a>`;
+}
+function pcard(p){
+  const s = pstats(p), n = s.doing[0] || s.next;
+  const now = n ? `<div class="now ${n.status==="doing"?"doing":""}"><b>${n.status==="doing"?"In progress":s.p1.length?"Next":"Up next"}</b><span>${esc(n.title)}</span></div>` : "";
+  return `<a class="card pcard" href="#/p/${encodeURIComponent(p.slug)}" style="text-decoration:none;color:inherit">
+    <div class="top"><span class="pdot" style="background:${pcolor(p.slug)}"></span><span class="nm">${esc(p.name)}</span>
+      ${p.code_doing?`<span class="livepill"><span class="pulse on" style="width:6px;height:6px"></span>Code working</span>`:""}</div>
+    ${now}
+    <div class="stt">${esc(p.status || p.goal || "No status yet")}</div>
+    <div class="pchips">
+      ${s.open.length?`<span class="chip">${s.open.length} open</span>`:""}
+      ${s.p1.length?`<span class="chip p1">P1 ×${s.p1.length}</span>`:""}
+      ${s.blocked.length?`<span class="chip p1">${s.blocked.length} blocked</span>`:""}
+      ${p.handoffs.length?`<span class="chip hand">${plural(p.handoffs.length,"handoff")}</span>`:""}
+      ${p.done_count?`<span class="chip">${p.done_count} done</span>`:""}
+      <span class="ago">${esc(p.last_active_ago||"")}</span>
+    </div>
+  </a>`;
 }
 function viewArchive(){
   const rows = S.archived.map(a=>`<div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 16px;margin-bottom:8px">
@@ -464,21 +546,19 @@ function viewArchive(){
     <div class="h-sub">${S.archived.length ? `${plural(S.archived.length,"item")} hidden from your lists. Nothing is deleted.` : "Nothing is archived."}</div>
     ${rows || `<div class="card empty" style="padding:40px">Ideas and projects you have not touched for 30 days end up here, and come back when you ask for them.</div>`}</div>`;
 }
-function emptyStart(){
-  return `<div class="card" style="margin-top:24px;padding:22px 24px"><div style="font-weight:600;font-size:15px">Start your first project</div>
-  <p class="muted" style="margin:6px 0 12px;max-width:60ch">In a code folder run <code class="mono">tether init --goal "…"</code>. Claude Code will load its context at every session start, and its task list will show up here live.</p></div>`;
+function factsStrip(p){
+  const s = pstats(p), f = [];
+  f.push(`<span><b>${s.open.length}</b>open</span>`);
+  if (s.doing.length) f.push(`<span class="live"><b>${s.doing.length}</b>in progress</span>`);
+  if (s.p1.length) f.push(`<span class="hot"><b>${s.p1.length}</b>P1</span>`);
+  if (s.blocked.length) f.push(`<span class="hot"><b>${s.blocked.length}</b>blocked</span>`);
+  f.push(`<span><b>${p.done_count}</b>done</span>`);
+  if (p.handoffs.length) f.push(`<span><b>${p.handoffs.length}</b>${p.handoffs.length===1?"handoff":"handoffs"}</span>`);
+  f.push(`<span><b>${p.decisions.length}</b>${p.decisions.length===1?"decision":"decisions"}</span>`);
+  f.push(`<span><b>${p.ideas.length}</b>${p.ideas.length===1?"idea":"ideas"}</span>`);
+  f.push(`<span>active <b style="margin:0">${esc(p.last_active_ago||"never")}</b></span>`);
+  return `<div class="facts">${f.join("")}</div>`;
 }
-function pcard(p){
-  const total = p.open + p.done_count, pct = total ? Math.round(p.done_count/total*100) : 0;
-  return `<a class="card pcard" href="#/p/${encodeURIComponent(p.slug)}" style="text-decoration:none;color:inherit">
-    <div class="top"><span class="pdot" style="background:${pcolor(p.slug)}"></span><span class="nm">${esc(p.name)}</span>
-      ${p.code_doing?`<span class="livepill"><span class="pulse on" style="width:6px;height:6px"></span>Code working</span>`:""}</div>
-    <div class="stt">${esc(p.status || p.goal || "No status yet")}</div>
-    <div class="bar" title="${pct}% of tasks done"><i style="width:${pct}%"></i></div>
-    <div class="ft"><span>${p.open} open</span><span>${p.done_count} done</span>${p.handoffs.length?`<span style="color:var(--accent-ink)">${plural(p.handoffs.length,"handoff")}</span>`:""}<span style="margin-left:auto">${esc(p.last_active_ago)}</span></div>
-  </a>`;
-}
-
 function viewProject(p){
   const open = p.tasks.filter(t=>t.status!=="done"&&t.status!=="dropped");
   const groups = [["doing","In progress"],["blocked","Blocked"],["todo","To do"]];
@@ -492,6 +572,7 @@ function viewProject(p){
       <button class="btn sm" data-act="${focus===p.slug?"unfocus":"focus"}" data-p="${esc(p.slug)}" title="${focus===p.slug?"Show every active project again":"Show only this project in the sidebar and overview"}">${focus===p.slug?"Focused · show all":"Focus on this"}</button>
       <div class="meta">${p.root?`<span class="mono" title="${esc(p.root)}">${esc(home(p.root))}</span>`:""}<span>Updated ${esc(p.updated)}</span></div>
     </div>
+    ${factsStrip(p)}
     <div class="grid"><div class="stack">
       ${liveCard(p)}
       ${p.handoffs.map(h=>`<div class="card handoff"><div class="ic">${I.hand}</div><div style="min-width:0;flex:1">
