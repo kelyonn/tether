@@ -239,3 +239,14 @@ def test_a_failed_github_sync_is_visible(page, seeded):
     page.wait_for_selector("#side .brand")
     expect(page.locator(".sync.gh")).to_contain_text("GitHub sync failed")
     assert "gh is not logged in" in page.locator(".sync.gh").get_attribute("title")
+
+
+def test_the_github_sync_status_stays_on_screen_with_a_long_project_list(page, seeded):
+    for i in range(40):
+        p = seeded.create_project(f"Long list {i}", "g")
+        seeded.add_task(p["id"], f"task {i}")
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    page.locator("#side").evaluate("el => el.scrollTop = 0")                # scrolled to the top
+    box = page.locator(".sync.gh").bounding_box()
+    assert box is not None and box["y"] + box["height"] <= page.viewport_size["height"]

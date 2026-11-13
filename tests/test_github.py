@@ -140,10 +140,9 @@ def test_fetch_explains_a_failed_login(repo):
 
 
 def test_missing_gh_cli_is_explained(monkeypatch):
-    def boom(*a, **k):
-        raise FileNotFoundError
-    monkeypatch.setattr(subprocess, "run", boom)
-    with pytest.raises(TetherError, match="not installed"):
+    monkeypatch.setattr(github.shutil, "which", lambda name: None)
+    monkeypatch.setattr(github, "GH_LOCATIONS", ())
+    with pytest.raises(TetherError, match="was not found"):
         github.run_gh(["api", "user"])
 
 
@@ -288,3 +287,54 @@ def test_closing_only_touches_the_matching_prefix(store):
 def test_local_dataclass_defaults():
     assert Local("a", "/p", "o", "r", "main", "h", 0).uncommitted == 0
     assert Remote.__dataclass_fields__["issues"].default_factory is list
+
+
+# -- finding gh when the PATH is bare (a login service) ----------------------------------
+
+def fake_exe(path):
+    path.write_text("#!/bin/sh\nexit 0\n")
+    path.chmod(0o755)
+    return str(path)
+
+
+def test_gh_is_found_in_the_usual_places_even_when_path_is_bare(tmp_path, monkeypatch):
+    exe = fake_exe(tmp_path / "gh")
+    monkeypatch.setattr(github.shutil, "which", lambda name: None)         # launchd: nothing on PATH
+    monkeypatch.setattr(github, "GH_LOCATIONS", ("/nowhere/gh", exe))
+    assert github.find_gh() == exe
+
+
+def test_a_configured_path_wins_over_everything(tmp_path, monkeypatch):
+    from tether import config
+    mine = fake_exe(tmp_path / "my-gh")
+    other = fake_exe(tmp_path / "other-gh")
+    config.save_config({"github_gh_path": mine})
+    monkeypatch.setattr(github.shutil, "which", lambda name: other)
+    assert github.find_gh() == mine
+
+
+def test_path_is_used_when_there_is_no_config(tmp_path, monkeypatch):
+    exe = fake_exe(tmp_path / "gh")
+    monkeypatch.setattr(github.shutil, "which", lambda name: exe)
+    monkeypatch.setattr(github, "GH_LOCATIONS", ())
+    assert github.find_gh() == exe
+
+
+def test_a_missing_gh_says_where_to_get_it(monkeypatch):
+    monkeypatch.setattr(github.shutil, "which", lambda name: None)
+    monkeypatch.setattr(github, "GH_LOCATIONS", ("/nowhere/gh",))
+    with pytest.raises(TetherError, match=r"cli\.github\.com"):
+        github.find_gh()
+
+
+def test_run_gh_uses_the_resolved_path(tmp_path, monkeypatch):
+    exe = fake_exe(tmp_path / "gh")
+    monkeypatch.setattr(github, "find_gh", lambda: exe)
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, "ok", "")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert github.run_gh(["api", "user"]) == (0, "ok")
+    assert seen["cmd"] == [exe, "api", "user"]

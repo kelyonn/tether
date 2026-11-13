@@ -13,7 +13,9 @@ are added, ones that no longer apply are closed, and tasks you dropped stay drop
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -79,9 +81,30 @@ class Report:
     lines: list[str] = field(default_factory=list)
 
 
+# Where `gh` usually lives. A login service (launchd) starts with a bare PATH that has none
+# of these, so "not found" there does not mean "not installed".
+GH_LOCATIONS = ("/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh", "~/.local/bin/gh",
+                "~/bin/gh", "/home/linuxbrew/.linuxbrew/bin/gh")
+
+
+def find_gh() -> str:
+    """The path to the GitHub CLI: `github_gh_path` in the config, then PATH, then the usual places."""
+    configured = config.load_config().get("github_gh_path")
+    candidates = [str(configured)] if configured else []
+    found = shutil.which("gh")
+    if found:
+        candidates.append(found)
+    candidates += [str(Path(p).expanduser()) for p in GH_LOCATIONS]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    raise TetherError("the GitHub CLI (`gh`) was not found. Install it from https://cli.github.com "
+                      "and run `gh auth login`, or set `github_gh_path` in the Tether config.")
+
+
 def run_gh(args: list[str]) -> tuple[int, str]:
     try:
-        p = subprocess.run(["gh", *args], capture_output=True, text=True, timeout=60)
+        p = subprocess.run([find_gh(), *args], capture_output=True, text=True, timeout=60)
     except FileNotFoundError as e:
         raise TetherError("the GitHub CLI (`gh`) is not installed. Install it from "
                           "https://cli.github.com and run `gh auth login`.") from e
