@@ -145,6 +145,7 @@ class CoreMixin(StoreBase):
                 q("SELECT coalesce(max(updated_at),'') FROM memories"),
                 q("SELECT coalesce(max(updated_at),'') FROM tasks"),
                 q("SELECT count(*) FROM memories WHERE archived=0"),
+                q("SELECT count(*) FROM projects WHERE archived=0"),
                 q("SELECT coalesce(max(updated_at),'') FROM projects"),
                 q("SELECT coalesce(max(updated_at),'') FROM handoffs"),
                 q("SELECT count(*) FROM decisions"))

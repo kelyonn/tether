@@ -61,7 +61,12 @@ def snapshot(store: Store) -> dict:
         sync_info = {"machine": st["machine"], "error": store.sync_error,
                      "peers": [{"machine": p["machine"], "last": p["last_change"]}
                                for p in st["peers"]]}
-    return {"projects": projects, "sync": sync_info,
+    gone = store.archived_items()
+    archived = ([{"type": "project", "id": p["id"], "slug": p["slug"], "title": p["name"],
+                  "auto": p["archived"] == 2, "ago": ago(p["updated_at"])} for p in gone["projects"]]
+                + [{"type": "idea", "id": m["id"], "title": m["title"], "project": m["project_slug"],
+                    "auto": m["archived"] == 2, "ago": ago(m["updated_at"])} for m in gone["memories"]])
+    return {"projects": projects, "sync": sync_info, "archived": archived,
             "inbox": [_mem(m, store) for m in box["fresh"]],
             "older": [_mem(m, store) for m in box["older"]],
             "marker": list(store.change_marker())}
@@ -126,6 +131,10 @@ def act(store: Store, req: dict) -> str:
     elif kind == "add_memory":
         store.add_memory(req["title"], req.get("body", ""), req.get("tags", ""), sf,
                          pid() if req.get("project") else None, req.get("kind", "idea"))
+    elif kind == "restore_memory":
+        store.restore_item(f"m{int(req['id'])}")
+    elif kind == "restore_project":
+        store.restore_item(str(req["project"]))
     elif kind == "handoff_status":
         store.update_handoff(int(req["id"]), req["status"], surface=sf)
     elif kind == "decide":

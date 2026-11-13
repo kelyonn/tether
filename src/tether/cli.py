@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +42,31 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except KeyboardInterrupt:
         return 130
+    except sqlite3.Error as e:
+        if os.environ.get("TETHER_DEBUG"):
+            raise
+        print(f"tether: {_db_problem(e)}", file=sys.stderr)
+        return 1
+    except PermissionError as e:
+        if os.environ.get("TETHER_DEBUG"):
+            raise
+        print(f"tether: no permission to use {e.filename or 'a file it needs'}. "
+              "Check the folder's permissions, or set TETHER_HOME to a folder you own.", file=sys.stderr)
+        return 1
+
+
+def _db_problem(e: sqlite3.Error) -> str:
+    """What went wrong with the ledger, and what to do next, in plain words."""
+    msg = str(e).lower()
+    if "locked" in msg or "busy" in msg:
+        return ("the ledger is busy, probably another Tether process is writing. "
+                "Wait a moment and try again.")
+    if "malformed" in msg or "not a database" in msg or "corrupt" in msg:
+        return (f"the ledger file looks damaged ({e}). Run `tether doctor` to see what is wrong. "
+                "If it cannot be repaired, restore a backup with `tether import <file>`.")
+    if "readonly" in msg or "read-only" in msg:
+        return "the ledger is read-only. Check the permissions of the folder that holds it (`tether doctor` shows where)."
+    return f"the ledger could not be used ({e}). `tether doctor` can usually tell why. Set TETHER_DEBUG=1 for details."
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,6 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-hook", action="store_true", help="skip the Claude Code SessionStart hook")
     s.add_argument("--dry-run", action="store_true", help="show what would change")
     s.add_argument("--uninstall", action="store_true", help="remove Tether from the clients")
+    s.add_argument("--no-check", action="store_true",
+                   help="skip the end-to-end check that normally runs after installing")
 
     s = cmd("doctor", cmd_doctor, "check the install and the store")
     s.add_argument("--deep", action="store_true",
@@ -241,6 +269,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = cmd("archive", cmd_archive, "archive a project (hidden from lists)")
     s.add_argument("--undo", action="store_true")
 
+    cmd("archived", cmd_archived, "list what is archived (by you, or for being unused)")
+
+    s = cmd("restore", cmd_restore, "bring an archived idea (m12) or project back")
+    s.add_argument("ref", help="m12 for an idea, or a project name")
+
     s = cmd("sweep", cmd_sweep, "archive memories and projects unused for 30 days")
     s.add_argument("--dry-run", action="store_true", help="show what would be archived")
 
@@ -317,7 +350,19 @@ def cmd_install(args) -> int:
             failed = True
             print(f"{step.__name__:18} failed        {e}", file=sys.stderr)
     if not args.uninstall and not args.dry_run and not failed:
-        print("\nNext: run `tether init` inside a project folder, then start Claude Code there.")
+        if not args.no_check:
+            print("\nChecking that it works (a throwaway ledger, your data is not touched)...")
+            from tether import selftest
+            checks = selftest.run()
+            for c in checks:
+                print(f"  {'ok  ' if c.ok else 'FAIL'} {c.name}" + (f" — {c.detail}" if c.detail else ""))
+            if not all(c.ok for c in checks):
+                print("\nSomething did not work. Run `tether doctor --deep` for details.")
+                return 1
+            print("  All good.")
+        print("\nNext:\n  1. cd into a project folder and run `tether init --goal \"what you are building\"`"
+              "\n  2. start Claude Code (or restart Claude Desktop) there; it will already know the project"
+              "\n  3. open the live view any time with `tether ui`")
     return 1 if failed else 0
 
 
@@ -865,6 +910,28 @@ def cmd_archive(args) -> int:
     pid = _pid(store, args)
     row = store.update_project(pid, archived=not args.undo, surface=args.surface)
     print(f"{row['slug']} {'restored' if args.undo else 'archived'}.")
+    return 0
+
+
+def cmd_archived(args) -> int:
+    items = _store().archived_items()
+    if not items["memories"] and not items["projects"]:
+        print("Nothing is archived.")
+        return 0
+    for p in items["projects"]:
+        why = "unused" if p["archived"] == 2 else "by you"
+        print(f"project {p['slug']:20} {p['name']} ({why})")
+    for m in items["memories"]:
+        why = "unused" if m["archived"] == 2 else "by you"
+        print(f"m{m['id']:<6} {m['title'][:60]} ({why})")
+    print("\nBring one back: tether restore m12   or   tether restore <project>")
+    print("Anything marked 'unused' also comes back by itself when you ask for it.")
+    return 0
+
+
+def cmd_restore(args) -> int:
+    kind, row = _store().restore_item(args.ref)
+    print(f"{'Project ' + row['slug'] if kind == 'projects' else 'm' + str(row['id'])} restored.")
     return 0
 
 

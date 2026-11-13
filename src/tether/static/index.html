@@ -268,6 +268,18 @@ textarea.body:focus{border-color:var(--accent)}
 <div class="scrim" id="scrim"></div>
 <div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Idea"></div>
 <div class="pal-wrap" id="palwrap"><div class="pal" role="dialog" aria-label="Command menu"><input id="palin" placeholder="Type a command or search ideas, tasks, decisions…" autocomplete="off" spellcheck="false"><div class="pal-list" id="pallist"></div><div class="pal-f"><span><kbd>↑</kbd> <kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div></div></div>
+<div class="pal-wrap" id="helpwrap"><div class="pal" role="dialog" aria-label="Keyboard shortcuts" style="padding:18px 20px">
+  <div style="font-weight:600;margin-bottom:10px">Keyboard shortcuts</div>
+  <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px">
+    <span><kbd>⌘K</kbd> <kbd>/</kbd></span><span>Search or jump to anything</span>
+    <span><kbd>c</kbd></span><span>Capture an idea</span>
+    <span><kbd>g</kbd> then <kbd>o</kbd></span><span>Go to the overview</span>
+    <span><kbd>g</kbd> then <kbd>i</kbd></span><span>Go to the ideas inbox</span>
+    <span><kbd>g</kbd> then <kbd>a</kbd></span><span>Go to the archive</span>
+    <span><kbd>f</kbd></span><span>Focus on this project, or show all</span>
+    <span><kbd>?</kbd></span><span>Show or hide this help</span>
+    <span><kbd>esc</kbd></span><span>Close whatever is open</span>
+  </div></div></div>
 <div class="toasts" id="toasts"></div>
 
 <script>
@@ -312,7 +324,7 @@ function setFocus(slug){ focus=slug||null; try{ slug?localStorage.setItem("tethe
 /* Every active project, unless one is focused (and still exists). */
 function shown(){ const f=focus&&proj(focus); return f?[f]:S.projects; }
 function focused(){ return focus&&proj(focus)?proj(focus):null; }
-function parseRoute(){ const h=location.hash.replace(/^#\/?/,""); const [a,b]=h.split("/"); return a==="p"&&b?{v:"project",slug:decodeURIComponent(b)}:a==="ideas"?{v:"ideas"}:{v:"home"}; }
+function parseRoute(){ const h=location.hash.replace(/^#\/?/,""); const [a,b]=h.split("/"); return a==="p"&&b?{v:"project",slug:decodeURIComponent(b)}:a==="ideas"?{v:"ideas"}:a==="archive"?{v:"archive"}:{v:"home"}; }
 function go(h){ if(location.hash!==h) location.hash=h; else { route=parseRoute(); render(); } }
 function pcolor(slug){ const p=proj(slug); if(p) return PCOLORS[(p.id-1)%PCOLORS.length]; let h=0; for(const c of slug) h=(h*31+c.charCodeAt(0))>>>0; return PCOLORS[h%PCOLORS.length]; }
 function proj(slug){ return S && S.projects.find(p=>p.slug===slug); }
@@ -386,11 +398,11 @@ function render(){
   const typing = a && (a.matches("main input, main textarea") ) && a.value;
   if (typing) return; // don't clobber what the user is typing; next change will render
   const sc = $("#main").scrollTop;
-  $("#main").innerHTML = route.v==="project" ? (proj(route.slug) ? viewProject(proj(route.slug)) : viewMissing()) : route.v==="ideas" ? viewIdeas() : viewHome();
+  $("#main").innerHTML = route.v==="project" ? (proj(route.slug) ? viewProject(proj(route.slug)) : viewMissing()) : route.v==="ideas" ? viewIdeas() : route.v==="archive" ? viewArchive() : viewHome();
   $("#main").scrollTop = sc;
   if (drawerId) renderDrawer();
   S.projects.forEach(p=>p.events.forEach(e=>seenEvents.add(e.id))); firstLoad=false;
-  document.title = route.v==="project" ? `${proj(route.slug)?.name||"Project"} · Tether` : route.v==="ideas" ? "Ideas · Tether" : "Tether";
+  document.title = route.v==="project" ? `${proj(route.slug)?.name||"Project"} · Tether` : route.v==="ideas" ? "Ideas · Tether" : route.v==="archive" ? "Archive · Tether" : "Tether";
 }
 function isFresh(e){ return !firstLoad && !seenEvents.has(e.id); }
 
@@ -402,6 +414,7 @@ function renderSide(){
     <button class="search-btn" data-act="palette">${I.search}<span class="lbl">Search or jump to…</span><kbd>⌘K</kbd></button>
     <a class="nav ${route.v==="home"?"on":""}" href="#/"><span class="ic">${I.home}</span><span class="lbl">Overview</span></a>
     <a class="nav ${route.v==="ideas"?"on":""}" href="#/ideas"><span class="ic">${I.inbox}</span><span class="lbl">Ideas inbox</span>${nIdeas?`<span class="count">${nIdeas}</span>`:""}</a>
+    <a class="nav ${route.v==="archive"?"on":""}" href="#/archive"><span class="ic">${I.archive}</span><span class="lbl">Archive</span>${S.archived.length?`<span class="count">${S.archived.length}</span>`:""}</a>
     <div class="nav-label">Projects</div>
     ${focused()?`<button class="nav on" data-act="unfocus" title="Show every active project again"><span class="ic">${I.x}</span><span class="lbl">Focused · show all ${S.projects.length}</span></button>`:""}
     ${shown().map(p=>`<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
@@ -441,6 +454,15 @@ function viewHome(){
         <div class="tl">${events.map(e=>evRow(e,true)).join("") || `<div class="empty">No activity yet.</div>`}</div>
       </section>
     </div></div>`;
+}
+function viewArchive(){
+  const rows = S.archived.map(a=>`<div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 16px;margin-bottom:8px">
+    <div style="min-width:0;flex:1"><div style="font-weight:500">${esc(a.title)} <span class="kind">${a.type}</span></div>
+      <div class="muted" style="font-size:12.5px">${a.auto?"Archived for being unused. It comes back by itself when you ask for it.":"Archived by you."} · ${esc(a.ago)}${a.project?` · ${esc(a.project)}`:""}</div></div>
+    <button class="btn sm" data-act="restore" data-type="${a.type}" data-id="${a.id}" data-p="${esc(a.slug||"")}">Restore</button></div>`).join("");
+  return `<div class="page"><h1>Archive</h1>
+    <div class="h-sub">${S.archived.length ? `${plural(S.archived.length,"item")} hidden from your lists. Nothing is deleted.` : "Nothing is archived."}</div>
+    ${rows || `<div class="card empty" style="padding:40px">Ideas and projects you have not touched for 30 days end up here, and come back when you ask for them.</div>`}</div>`;
 }
 function emptyStart(){
   return `<div class="card" style="margin-top:24px;padding:22px 24px"><div style="font-weight:600;font-size:15px">Start your first project</div>
@@ -613,8 +635,10 @@ $("#palin").addEventListener("keydown", e => {
 });
 $("#pallist").addEventListener("click", e => { const el=e.target.closest(".pal-item"); if(!el) return; const it=palItems[+el.dataset.i]; closePal(); it.run(); });
 $("#palwrap").addEventListener("mousedown", e => { if(e.target.id==="palwrap") closePal(); });
+$("#helpwrap").addEventListener("mousedown", e => { if(e.target.id==="helpwrap") $("#helpwrap").classList.remove("on"); });
 
 /* ---------- events ---------- */
+let pendingG = 0;
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]"); if (!el) return;
   const id = +el.dataset.id, a = el.dataset.act;
@@ -626,6 +650,7 @@ document.addEventListener("click", e => {
   else if (a==="handoff") post({action:"handoff_status",id,status:el.dataset.s}, el.dataset.s==="done"?`Handoff h${id} delivered`:`Accepted h${id}`);
   else if (a==="open-idea") openIdea(id);
   else if (a==="close") closeDrawer();
+  else if (a==="restore"){ const m=el.dataset.type==="idea"; post(m?{action:"restore_memory",id}:{action:"restore_project",project:el.dataset.p}, `${m?"Idea":"Project"} restored`); }
   else if (a==="focus") setFocus(el.dataset.p);
   else if (a==="unfocus") setFocus(null);
   else if (a==="attach") post({action:"attach",id,project:el.dataset.p}, `Attached to ${proj(el.dataset.p)?.name||el.dataset.p}`);
@@ -650,7 +675,18 @@ function capture(){ const inp=$("#newidea"); const v=inp?.value.trim(); if(!v) r
 document.addEventListener("keydown", e => {
   const t = e.target;
   if ((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); $("#palwrap").classList.contains("on")?closePal():openPal(); return; }
-  if (e.key==="Escape"){ if($("#palwrap").classList.contains("on")) closePal(); else if(drawerId) closeDrawer(); return; }
+  if (e.key==="Escape"){ if($("#helpwrap").classList.contains("on")) $("#helpwrap").classList.remove("on"); else if($("#palwrap").classList.contains("on")) closePal(); else if(drawerId) closeDrawer(); return; }
+  const typing = t.matches && t.matches("input, textarea, select, [contenteditable]");
+  if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && S){
+    if (e.key==="/"){ e.preventDefault(); openPal(); return; }
+    if (e.key==="?"){ $("#helpwrap").classList.toggle("on"); return; }
+    if (e.key==="c"){ e.preventDefault(); go("#/ideas"); setTimeout(()=>$("#newidea")?.focus(),30); return; }
+    if (e.key==="g"){ pendingG=Date.now(); return; }
+    if (pendingG && Date.now()-pendingG<1200){
+      pendingG=0; const dest={o:"#/",i:"#/ideas",a:"#/archive"}[e.key]; if(dest){ e.preventDefault(); go(dest); } return;
+    }
+    if (e.key==="f"){ const c=route.v==="project"?proj(route.slug):null; if(c){ setFocus(focus===c.slug?null:c.slug); } else if(focus){ setFocus(null); } return; }
+  }
   if (t.id==="newtask" && e.key==="Enter"){
     let v=t.value.trim(); if(!v) return; let f="any", pr=2;
     v=v.replace(/(^|\s)@(code|chat|design|desktop|cowork)\b/i,(_,s,x)=>{ f=x.toLowerCase(); return s; }).replace(/(^|\s)!([123])\b/,(_,s,x)=>{ pr=+x; return s; }).trim();

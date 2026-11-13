@@ -94,6 +94,34 @@ class ArchiveMixin(StoreBase):
                                         (AUTO_ARCHIVED, i))
         return found
 
+    def archived_items(self) -> dict[str, list[sqlite3.Row]]:
+        """Everything hidden from lists, newest first. `archived` is 2 if Tether archived
+        it for being idle (restored when asked for) and 1 if you archived it yourself."""
+        mems = self.db.execute(
+            "SELECT m.*, p.slug AS project_slug FROM memories m LEFT JOIN projects p "
+            "ON p.id=m.project_id WHERE m.archived != 0 ORDER BY m.updated_at DESC").fetchall()
+        projs = self.db.execute(
+            "SELECT * FROM projects WHERE archived != 0 ORDER BY updated_at DESC").fetchall()
+        return {"memories": mems, "projects": projs}
+
+    def restore_item(self, ref: str) -> tuple[str, sqlite3.Row]:
+        """Bring an archived memory (m12) or project (slug or name) back. Counts as use."""
+        ref = str(ref).strip()
+        if REF_RE.match(ref) and ref.lower().lstrip().startswith("m"):
+            mid = parse_memory_id(ref)
+            self.memory(mid)
+            with self.tx():
+                self.db.execute("UPDATE memories SET archived=0 WHERE id=?", (mid,))
+            self.touch("memories", mid)
+            return "memories", self.memory(mid)
+        row = self.find_project(ref)
+        if row is None:
+            raise TetherError(f"nothing called {ref!r}. See what is archived with `tether archived`.")
+        with self.tx():
+            self.db.execute("UPDATE projects SET archived=0 WHERE id=?", (row["id"],))
+        self.touch("projects", row["id"])
+        return "projects", self.project(row["id"])
+
     def maybe_sweep(self) -> dict[str, list[int]] | None:
         """archive_idle at most once per SWEEP_EVERY_HOURS (called when the store opens)."""
         row = self.db.execute("SELECT value FROM local_state WHERE key='last_sweep'").fetchone()
