@@ -158,8 +158,8 @@ def already_running(port: int = PORT) -> bool:
         return False
 
 
-def serve(port: int = PORT, open_browser: bool = True) -> None:
-    store = Store()
+def make_server(store: Store, port: int = PORT) -> tuple[ThreadingHTTPServer, str]:
+    """Build the live-view HTTP server (not started). Returns (server, write token)."""
     lock = threading.Lock()
     token = pysecrets.token_urlsafe(24)
     body = page(token)
@@ -208,20 +208,27 @@ def serve(port: int = PORT, open_browser: bool = True) -> None:
             self._send(404, b"{}")
 
         def do_POST(self):
+            # Read the body before any reply, so a refusal is not a reset connection.
+            n = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(min(n, 200_000)) if n > 0 else b""
             if not self._local() or self.headers.get("X-Tether-Token") != token:
                 return self._send(403, b'{"error":"forbidden"}')
             if self.path != "/api/act":
                 return self._send(404, b"{}")
             try:
-                n = int(self.headers.get("Content-Length") or 0)
-                req = json.loads(self.rfile.read(min(n, 200_000)) or b"{}")
+                req = json.loads(raw or b"{}")
                 with lock:
                     act(store, req)
                 self._send(200, b'{"ok":true}')
             except (TetherError, KeyError, ValueError, TypeError) as e:
                 self._send(400, json.dumps({"error": str(e)}).encode())
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), H)
+    return ThreadingHTTPServer(("127.0.0.1", port), H), token
+
+
+def serve(port: int = PORT, open_browser: bool = True) -> None:
+    store = Store()
+    httpd, _token = make_server(store, port)
     url = f"http://127.0.0.1:{port}"
     print(f"Tether live view: {url}  (Ctrl-C to stop)", flush=True)
     if open_browser:
@@ -232,6 +239,8 @@ def serve(port: int = PORT, open_browser: bool = True) -> None:
         pass
     finally:
         httpd.server_close()
+
+
 
 
 # -- terminal dashboard ----------------------------------------------------------------

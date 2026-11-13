@@ -24,6 +24,8 @@ Issues = "https://github.com/kelyonn/tether/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.10"]
+# browser tests for the live view: pip install -e ".[e2e]" && playwright install chromium
+e2e = ["playwright>=1.45"]
 # `tether eval` (rule-following eval against the Claude API)
 eval = ["anthropic>=2.6,<3"]
 
@@ -39,6 +41,9 @@ packages = ["src/tether"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Browser tests run in their own process (a live Playwright loop breaks async tests):
+#   pytest tests/e2e
+addopts = "--ignore=tests/e2e"
 
 [tool.coverage.run]
 source = ["src/tether"]
