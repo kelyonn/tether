@@ -72,7 +72,17 @@ class CoreMixin(StoreBase):
             version = 1
         for target, script in enumerate(MIGRATIONS, start=2):
             if version < target:
-                self.db.executescript(f"BEGIN; {script}; PRAGMA user_version={target}; COMMIT;")
+                if callable(script):
+                    self.db.execute("BEGIN")
+                    try:
+                        script(self.db)
+                        self.db.execute(f"PRAGMA user_version={target}")
+                    except BaseException:
+                        self.db.execute("ROLLBACK")
+                        raise
+                    self.db.execute("COMMIT")
+                else:
+                    self.db.executescript(f"BEGIN; {script}; PRAGMA user_version={target}; COMMIT;")
                 version = target
 
     @contextmanager

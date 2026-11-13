@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from typing import Any
 
 from tether.errors import TetherError
 from tether.store.base import StoreBase
@@ -31,7 +32,7 @@ class SearchMixin(StoreBase):
                 self.touch("projects", row["project_id"])
         return out
 
-    def _recall_live(self, query: str, words: list[str], limit: int
+    def _recall_like(self, query: str, words: list[str], limit: int
                      ) -> list[tuple[str, sqlite3.Row, str | None]]:
         like = [f"%{w}%" for w in words]
         out: list[tuple[str, sqlite3.Row, str | None]] = []
@@ -47,16 +48,68 @@ class SearchMixin(StoreBase):
                                  "LIMIT ?", (*like, limit)):
             out.append(("projects", r, r["slug"]))
         for r in self.projects():
-            out.extend((t, row, r["slug"]) for t, row in self.search(r["id"], query, limit)
-                       )
+            out.extend((t, row, r["slug"]) for t, row in self._search_like(r["id"], query, limit))
         return out[:limit]
 
     def search(self, pid: int, query: str, limit: int = 20) -> list[tuple[str, sqlite3.Row]]:
-        """Case-insensitive match of every word in `query`, across all record types,
-        including closed tasks and superseded decisions (this is the history lookup)."""
+        """Every word in `query` must match (as a word start), across all record types,
+        including closed tasks and superseded decisions (this is the history lookup).
+        Best matches first; anything the word index misses is topped up by substring match."""
         words = [w for w in query.split() if w]
         if not words:
             raise TetherError("search query is empty")
+        out: list[tuple[str, sqlite3.Row]] = []
+        seen: set[tuple[str, int]] = set()
+        for kind, rid in self._fts_hits(words, limit * 3, pid):
+            row = self.db.execute(f"SELECT * FROM {kind} WHERE id=?", (rid,)).fetchone()
+            if row is None or kind == "projects" or (kind == "memories" and row["archived"]):
+                continue
+            out.append((kind, row))
+            seen.add((kind, rid))
+        out.extend(x for x in self._search_like(pid, query, limit) if (x[0], x[1]["id"]) not in seen)
+        return out[:limit]
+
+    def _fts_hits(self, words: list[str], limit: int, pid: int | None = None) -> list[tuple[str, int]]:
+        """(kind, id) of the best full-text matches, ranked. Empty if there is no FTS5 index."""
+        match = " ".join('"' + w.replace('"', '""') + '"*' for w in words)
+        sql = "SELECT kind, ref FROM search_idx WHERE search_idx MATCH ?"
+        args: list[Any] = [match]
+        if pid is not None:
+            sql += " AND pid = ?"
+            args.append(pid)
+        sql += " ORDER BY bm25(search_idx) LIMIT ?"
+        try:
+            return [(r["kind"], r["ref"]) for r in self.db.execute(sql, (*args, limit))]
+        except sqlite3.OperationalError:
+            return []          # SQLite without FTS5, or a query it cannot parse
+
+    def _recall_live(self, query: str, words: list[str], limit: int
+                     ) -> list[tuple[str, sqlite3.Row, str | None]]:
+        out: list[tuple[str, sqlite3.Row, str | None]] = []
+        seen: set[tuple[str, int]] = set()
+        for kind, rid in self._fts_hits(words, limit * 4):
+            if kind == "memories":
+                row = self.db.execute(
+                    "SELECT m.*, p.slug AS project_slug FROM memories m LEFT JOIN projects p "
+                    "ON p.id=m.project_id WHERE m.id=? AND m.archived=0", (rid,)).fetchone()
+                slug = row["project_slug"] if row else None
+            elif kind == "projects":
+                row = self.db.execute("SELECT * FROM projects WHERE id=? AND archived=0", (rid,)).fetchone()
+                slug = row["slug"] if row else None
+            else:
+                row = self.db.execute(f"SELECT * FROM {kind} WHERE id=?", (rid,)).fetchone()
+                owner = (self.db.execute("SELECT slug FROM projects WHERE id=? AND archived=0",
+                                         (row["project_id"],)).fetchone() if row else None)
+                slug = owner["slug"] if owner else None
+                row = row if owner else None
+            if row is not None:
+                out.append((kind, row, slug))
+                seen.add((kind, rid))
+        out.extend(x for x in self._recall_like(query, words, limit) if (x[0], x[1]["id"]) not in seen)
+        return out[:limit]
+
+    def _search_like(self, pid: int, query: str, limit: int) -> list[tuple[str, sqlite3.Row]]:
+        words = [w for w in query.split() if w]
         out: list[tuple[str, sqlite3.Row]] = []
         specs = [("decisions", "text || ' ' || why"),
                  ("tasks", "title || ' ' || detail || ' ' || note"),

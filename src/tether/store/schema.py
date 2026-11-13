@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
 from datetime import datetime, timezone
 
 from tether import config, sync
 from tether.errors import TetherError
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -90,6 +91,51 @@ CREATE INDEX IF NOT EXISTS ix_handoffs_open ON handoffs(project_id, status);
 CREATE INDEX IF NOT EXISTS ix_events_project ON events(project_id, id);
 """
 
+FTS_SOURCES = {
+    # table -> (SQL for the text to index, project id column, extra WHERE for events)
+    "memories": ("{r}.title || ' ' || {r}.body || ' ' || {r}.tags || ' ' || {r}.summary", "{r}.project_id", None),
+    "tasks": ("{r}.title || ' ' || {r}.detail || ' ' || {r}.note", "{r}.project_id", None),
+    "decisions": ("{r}.text || ' ' || {r}.why", "{r}.project_id", None),
+    "handoffs": ("{r}.title || ' ' || {r}.body || ' ' || {r}.note", "{r}.project_id", None),
+    "projects": ("{r}.name || ' ' || {r}.goal || ' ' || {r}.status || ' ' || {r}.brief", "{r}.id", None),
+    "events": ("{r}.summary", "{r}.project_id", "{r}.kind = 'note'"),
+}
+
+
+def setup_fts(db: sqlite3.Connection) -> None:
+    """v6: a ranked full-text index over every searchable record, kept current by triggers.
+    SQLite builds without FTS5 skip this; search then falls back to substring matching."""
+    try:
+        db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS search_idx USING fts5("
+                   "kind UNINDEXED, ref UNINDEXED, pid UNINDEXED, text, "
+                   "tokenize='unicode61 remove_diacritics 2', prefix='2 3')")
+    except sqlite3.OperationalError:
+        return
+    for tbl, (text, pid, only) in FTS_SOURCES.items():
+        n = "NEW"
+        when = f" WHEN {only.format(r=n)}" if only else ""
+        ins = (f"INSERT INTO search_idx (kind, ref, pid, text) VALUES ('{tbl}', NEW.id, "
+               f"{pid.format(r=n)}, {text.format(r=n)})")
+        dele = f"DELETE FROM search_idx WHERE kind='{tbl}' AND ref=OLD.id"
+        db.execute(f"CREATE TRIGGER IF NOT EXISTS fts_{tbl}_ai AFTER INSERT ON {tbl}{when} BEGIN {ins}; END")
+        db.execute(f"CREATE TRIGGER IF NOT EXISTS fts_{tbl}_au AFTER UPDATE ON {tbl} BEGIN "
+                   f"{dele}; " + (f"INSERT INTO search_idx (kind, ref, pid, text) SELECT '{tbl}', NEW.id, "
+                                  f"{pid.format(r=n)}, {text.format(r=n)}"
+                                  + (f" WHERE {only.format(r=n)}" if only else "") + "; END"))
+    rebuild_fts(db)
+
+
+def rebuild_fts(db: sqlite3.Connection) -> int:
+    """Throw the index away and rebuild it from the tables. Returns the rows indexed."""
+    db.execute("DELETE FROM search_idx")
+    for tbl, (text, pid, only) in FTS_SOURCES.items():
+        r = "t"
+        where = f" WHERE {only.format(r=r)}" if only else ""
+        db.execute(f"INSERT INTO search_idx (kind, ref, pid, text) SELECT '{tbl}', t.id, "
+                   f"{pid.format(r=r)}, {text.format(r=r)} FROM {tbl} t{where}")
+    return db.execute("SELECT count(*) FROM search_idx").fetchone()[0]
+
+
 # Applied in order to databases older than SCHEMA_VERSION. Index = target version - 2.
 MIGRATIONS = [
     # v2: memories (ideas saved from any chat, project optional) and Claude Code's own
@@ -132,6 +178,8 @@ MIGRATIONS = [
     );
     CREATE TABLE IF NOT EXISTS local_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     """,
+    # v6: ranked full-text search. A function, because SQLite without FTS5 must still open.
+    setup_fts,
 ]
 ARCHIVE_AFTER_DAYS = 30      # unused this long -> auto-archived
 REARCHIVE_AFTER_DAYS = 7     # unused this long after being restored -> archived again
