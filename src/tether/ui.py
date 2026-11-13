@@ -35,7 +35,7 @@ def snapshot(store: Store) -> dict:
             "id": pid, "slug": p["slug"], "name": p["name"], "goal": p["goal"], "status": p["status"],
             "updated": ago(p["updated_at"]), "root": p["root_path"],
             "last_active": p["last_active"], "last_active_ago": ago(p["last_active"]),
-            "code_doing": p["code_doing"], "open": p["open_tasks"],
+            "code_doing": p["code_doing"], "code_live": p["code_active"] > 0, "open": p["open_tasks"],
             "done_count": counts["done"],
             "tasks": [_task(t) for t in [*open_tasks, *done]],
             "code_tasks": [_task(t) for t in store.recent_session_tasks(pid, 10)],

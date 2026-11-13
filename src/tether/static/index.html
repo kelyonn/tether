@@ -428,7 +428,7 @@ function isFresh(e){ return !firstLoad && !seenEvents.has(e.id); }
 function sideLink(p){
   return `<a class="nav ${route.v==="project"&&route.slug===p.slug?"on":""}" href="#/p/${encodeURIComponent(p.slug)}">
       <span class="ic"><span class="pdot" style="background:${pcolor(p.slug)}"></span></span><span class="lbl">${esc(p.name)}</span>
-      ${p.code_doing?`<span class="pulse on" title="Claude Code is working"></span>`:p.open?`<span class="count">${p.open}</span>`:""}</a>`;
+      ${p.code_doing||p.code_live?`<span class="pulse on" title="Claude Code is working"></span>`:p.open?`<span class="count">${p.open}</span>`:""}</a>`;
 }
 /* Projects with open work first (most pressing on top); the quiet rest folds away. The one you are viewing always shows. */
 function sideProjects(){
@@ -481,12 +481,12 @@ function pstats(p){
   const rank = x=>(x.status==="doing"?0:x.status==="blocked"?3:1)*10+(x.priority||2);
   const sorted = [...open].sort((a,b)=>rank(a)-rank(b));
   const doing = open.filter(x=>x.status==="doing"), p1 = open.filter(x=>x.priority===1), blocked = open.filter(x=>x.status==="blocked");
-  const active = open.length>0 || p.code_doing>0 || p.handoffs.length>0;
-  const score = (p.code_doing?1000:0)+doing.length*100+p1.length*10+Math.min(open.length,9)+(p.handoffs.length?5:0);
+  const live = p.code_doing>0 || p.code_live, active = open.length>0 || live || p.handoffs.length>0;
+  const score = (live?1000:0)+doing.length*100+p1.length*10+Math.min(open.length,9)+(p.handoffs.length?5:0);
   return {open, doing, p1, blocked, next: sorted[0]||null, active, score};
 }
 function viewHome(){
-  const ps = shown(), live = ps.filter(p=>p.code_doing);
+  const ps = shown(), live = ps.filter(p=>p.code_doing||p.code_live);
   const info = new Map(ps.map(p=>[p.slug,pstats(p)]));
   const byScore = (a,b)=>info.get(b.slug).score-info.get(a.slug).score || (b.last_active||"").localeCompare(a.last_active||"");
   const act = ps.filter(p=>info.get(p.slug).active).sort(byScore);
@@ -524,7 +524,7 @@ function pcard(p){
   const now = n ? `<div class="now ${n.status==="doing"?"doing":""}"><b>${n.status==="doing"?"In progress":s.p1.length?"Next":"Up next"}</b><span>${esc(n.title)}</span></div>` : "";
   return `<a class="card pcard" href="#/p/${encodeURIComponent(p.slug)}" style="text-decoration:none;color:inherit">
     <div class="top"><span class="pdot" style="background:${pcolor(p.slug)}"></span><span class="nm">${esc(p.name)}</span>
-      ${p.code_doing?`<span class="livepill"><span class="pulse on" style="width:6px;height:6px"></span>Code working</span>`:""}</div>
+      ${p.code_doing||p.code_live?`<span class="livepill"><span class="pulse on" style="width:6px;height:6px"></span>Code working</span>`:""}</div>
     ${now}
     <div class="stt">${esc(p.status || p.goal || "No status yet")}</div>
     <div class="pchips">

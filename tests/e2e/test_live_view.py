@@ -209,3 +209,12 @@ def test_brand_mark_and_favicon_are_the_thread_logo(page):
     expect(page.locator("#side .brand svg circle")).to_have_count(1)         # the amber knot
     icon = page.locator("link[rel=icon]").get_attribute("href")
     assert icon.startswith("data:image/svg+xml,") and "e8a87c" in icon
+
+
+def test_recent_edits_show_the_project_as_live_with_the_edit_in_the_feed(page, seeded):
+    p = seeded.find_project("alpha")
+    seeded.record_code_edit(p["id"], "s1", "/x/alpha/logo.svg", None)
+    page.reload()
+    page.wait_for_selector("#side .brand")
+    expect(page.locator(".pcard", has_text="Alpha")).to_contain_text("Code working")
+    expect(page.locator("body")).to_contain_text("edited logo.svg")

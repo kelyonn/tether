@@ -149,9 +149,10 @@ def test_status_flags_stale_install(monkeypatch):
     assert [r.action for r in install.status() if r.client == "Claude Desktop"] == ["stale"]
 
 
-def test_deep_doctor(capsys):
+def test_deep_doctor(capfd):
+    # capfd, not capsys: the server subprocess needs a real stderr file descriptor
     assert main(["doctor", "--deep"]) in (0, 1)  # 1 only because nothing is installed here
-    out = capsys.readouterr().out
+    out = capfd.readouterr().out
     assert "FAIL" not in out and out.count("ok  ") >= 5
 
 

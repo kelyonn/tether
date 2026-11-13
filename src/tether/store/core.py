@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from collections.abc import Iterator
@@ -111,6 +112,47 @@ class CoreMixin(StoreBase):
             "VALUES (?,?,?,?,?,?,?)", (pid, now(), surface, kind, ref, summary[:500],
                                        self.syncer.machine if self.syncer else None))
         return cast(int, cur.lastrowid)
+
+    EDIT_LOG_EVERY = 300        # seconds between "Code edited ..." entries per session
+    LIVE_WINDOW = 600           # a project counts as "Code is working" for this long after an edit
+
+    def record_code_edit(self, pid: int, session_id: str, path: str,
+                         root: str | None = None) -> bool:
+        """Note that Claude Code edited a file. The first edit of a session is logged at once;
+        after that edits are gathered and logged at most every EDIT_LOG_EVERY seconds, so a
+        long editing run is a handful of lines, not hundreds. Only file names are kept,
+        never contents. Returns True if an event was written."""
+        import time as _time
+        name = path
+        if root and path.startswith(root.rstrip("/") + "/"):
+            name = path[len(root.rstrip("/")) + 1:]
+        else:
+            name = Path(path).name
+        if "/node_modules/" in f"/{name}" or name.startswith(".git/") or "/.git/" in name:
+            return False
+        key = f"edits:{pid}:{session_id}"
+        row = self.db.execute("SELECT value FROM local_state WHERE key=?", (key,)).fetchone()
+        state: dict[str, Any] = json.loads(row["value"]) if row else {"last": 0, "files": []}
+        files: list[str] = state["files"]
+        if name not in files:
+            files.append(name)
+        t = _time.time()
+        write = t - state["last"] >= self.EDIT_LOG_EVERY
+        if write:
+            shown = ", ".join(files[:3]) + (f" and {len(files) - 3} more" if len(files) > 3 else "")
+            n = len(files)
+            summary = f"edited {shown}" if n <= 3 else f"edited {n} files: {shown}"
+            with self.tx():
+                self._log(pid, "code", "code-activity", None, summary[:480])
+            state = {"last": t, "files": []}
+        else:
+            state["files"] = files[-50:]
+        self.db.execute("INSERT INTO local_state (key, value) VALUES (?, ?) "
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        (key, json.dumps(state)))
+        if write:
+            self._changed(pid)
+        return write
 
     def events(self, pid: int, limit: int = 20, after_id: int = 0) -> list[sqlite3.Row]:
         return self.db.execute(

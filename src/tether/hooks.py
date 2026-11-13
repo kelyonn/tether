@@ -76,3 +76,28 @@ def post_tool_use() -> int:
     except Exception:
         return 0
     return 0
+
+
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+
+
+def post_edit() -> int:
+    """Note that Claude Code edited a file, only in folders bound to a project. Throttled
+    inside the store; every failure is silent so a session is never slowed or broken."""
+    payload = _payload()
+    if payload.get("tool_name", "") not in EDIT_TOOLS:
+        return 0
+    inp = payload.get("tool_input") or {}
+    path = inp.get("file_path") or inp.get("notebook_path") or ""
+    if not path:
+        return 0
+    try:
+        store = Store()
+        row = store.project_for_path(payload.get("cwd") or os.getcwd())
+        if not row:
+            return 0
+        store.record_code_edit(row["id"], str(payload.get("session_id") or "session")[:12],
+                               path, row["root_path"])
+    except Exception:
+        return 0
+    return 0

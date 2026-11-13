@@ -70,9 +70,12 @@ def test_install_adds_both_hooks_and_uninstalls(tmp_path):
     install.install_hook()
     hooks_cfg = json.loads(install.claude_settings_path().read_text())["hooks"]
     assert set(hooks_cfg) == {"SessionStart", "PostToolUse"}
-    assert hooks_cfg["PostToolUse"][0]["matcher"] == "TaskCreate|TaskUpdate|TodoWrite"
+    matchers = [g["matcher"] for g in hooks_cfg["PostToolUse"]]
+    assert matchers == ["TaskCreate|TaskUpdate|TodoWrite", "Edit|Write|MultiEdit|NotebookEdit"]
+    commands = [g["hooks"][0]["command"] for g in hooks_cfg["PostToolUse"]]
+    assert commands[0].endswith("hook post-tool-use") and commands[1].endswith("hook post-edit")
     install.install_hook()  # idempotent
-    assert len(json.loads(install.claude_settings_path().read_text())["hooks"]["PostToolUse"]) == 1
+    assert len(json.loads(install.claude_settings_path().read_text())["hooks"]["PostToolUse"]) == 2
     install.uninstall_hook()
     assert "hooks" not in json.loads(install.claude_settings_path().read_text())
 

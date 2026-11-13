@@ -289,7 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--repo", help="repository (default: current folder)")
 
     s = cmd("hook", cmd_hook, "hook entry points (Claude Code session start, git post-commit)")
-    s.add_argument("event", choices=["session-start", "post-tool-use", "post-commit"])
+    s.add_argument("event", choices=["session-start", "post-tool-use", "post-edit", "post-commit"])
 
     return p
 
@@ -996,6 +996,8 @@ def cmd_hook(args) -> int:
         return 0
     if args.event == "post-tool-use":
         return hooks.post_tool_use()
+    if args.event == "post-edit":
+        return hooks.post_edit()
     return _session_start_hook()
 
 

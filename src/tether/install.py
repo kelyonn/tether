@@ -156,45 +156,50 @@ def hook_command(event: str = "session-start") -> str:
     return f"{shlex.quote(sys.executable)} -m tether hook {event}"
 
 
-# event -> (matcher, timeout seconds, what it does)
-HOOKS = {
-    "SessionStart": ("startup|resume|clear|compact", 10, "session-start",
-                     "loads the context pack automatically"),
-    "PostToolUse": ("TaskCreate|TaskUpdate|TodoWrite", 5, "post-tool-use",
-                    "mirrors Claude Code's own tasks into Tether"),
-}
+# (event, matcher, timeout seconds, hook name, what it does)
+HOOKS = [
+    ("SessionStart", "startup|resume|clear|compact", 10, "session-start",
+     "loads the context pack automatically"),
+    ("PostToolUse", "TaskCreate|TaskUpdate|TodoWrite", 5, "post-tool-use",
+     "mirrors Claude Code's own tasks into Tether"),
+    ("PostToolUse", "Edit|Write|MultiEdit|NotebookEdit", 5, "post-edit",
+     "notes that Code is editing files, so the project shows as live"),
+]
 
 
 def install_hook(dry_run: bool = False) -> Result:
     path = claude_settings_path()
     data = _read_json(path)
-    for event, (matcher, timeout, name, _) in HOOKS.items():
+    for event in dict.fromkeys(h[0] for h in HOOKS):        # each event once, in order
         groups = data.setdefault("hooks", {}).setdefault(event, [])
         groups[:] = [g for g in groups if not _is_our_hook_group(g)]
-        groups.append({"matcher": matcher,
-                       "hooks": [{"type": "command", "command": hook_command(name),
-                                  "timeout": timeout}]})
+        for ev, matcher, timeout, name, _ in HOOKS:
+            if ev == event:
+                groups.append({"matcher": matcher,
+                               "hooks": [{"type": "command", "command": hook_command(name),
+                                          "timeout": timeout}]})
     if not dry_run:
         _write_json(path, data)
     return Result("Claude Code hooks", "would add" if dry_run else "added",
-                  f"SessionStart + PostToolUse in {path}: loads context, syncs Code's tasks")
+                  f"SessionStart + PostToolUse in {path}: loads context, syncs Code's tasks, "
+                  "notes edit activity")
 
 
 def uninstall_hook(dry_run: bool = False) -> Result:
     path = claude_settings_path()
     data = _read_json(path)
     hooks = data.get("hooks", {})
-    removed = False
-    for event in HOOKS:
+    changed = False
+    for event in dict.fromkeys(h[0] for h in HOOKS):
         groups = hooks.get(event, [])
         kept = [g for g in groups if not _is_our_hook_group(g)]
         if len(kept) != len(groups):
-            removed = True
+            changed = True
             if kept:
                 hooks[event] = kept
             else:
                 del hooks[event]
-    if not removed:
+    if not changed:
         return Result("Claude Code hooks", "not installed", str(path))
     if not hooks:
         data.pop("hooks", None)
@@ -243,11 +248,13 @@ def status() -> list[Result]:
         out.append(Result("Claude Code", "error", str(e)))
     try:
         hooks = _read_json(claude_settings_path()).get("hooks", {})
-        have = [e for e in HOOKS if any(_is_our_hook_group(g) for g in hooks.get(e, []))]
+        have = [name for ev, _m, _t, name, _d in HOOKS
+                if any(f"hook {name}" in h.get("command", "")
+                       for g in hooks.get(ev, []) for h in g.get("hooks", []))]
         state = "installed" if len(have) == len(HOOKS) else (
             "stale" if have else "missing")
         detail = str(claude_settings_path()) + (
-            "" if state != "stale" else " (re-run tether install to add the task-sync hook)")
+            "" if state != "stale" else " (re-run tether install to add the newer hooks)")
         out.append(Result("Claude Code hooks", state, detail))
     except (ValueError, OSError) as e:
         out.append(Result("Claude Code hooks", "error", str(e)))

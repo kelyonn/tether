@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
 from tether import config, secrets
@@ -67,10 +68,14 @@ class ProjectsMixin(StoreBase):
                  AND t.status='doing') AS code_doing,
               (SELECT count(*) FROM handoffs h WHERE h.project_id=p.id
                  AND h.status IN ('open','accepted')) AS open_handoffs,
+              (SELECT count(*) FROM events e WHERE e.project_id=p.id AND e.kind='code-activity'
+                 AND e.ts >= ?) AS code_active,
               (SELECT max(ts) FROM events e WHERE e.project_id=p.id) AS last_active
             FROM projects p {where} ORDER BY last_active DESC"""
         where = "" if include_archived else "WHERE p.archived=0"
-        return self.db.execute(sql.format(where=where)).fetchall()
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=self.LIVE_WINDOW)
+                  ).isoformat(timespec="seconds")
+        return self.db.execute(sql.format(where=where), (cutoff,)).fetchall()
 
     def project_for_path(self, path: str | os.PathLike[str]) -> sqlite3.Row | None:
         """The project whose root_path contains `path` (deepest match wins)."""
