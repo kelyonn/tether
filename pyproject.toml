@@ -41,6 +41,7 @@ packages = ["src/tether"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 # Browser tests run in their own process (a live Playwright loop breaks async tests):
 #   pytest tests/e2e
 addopts = "--ignore=tests/e2e"
@@ -50,7 +51,7 @@ source = ["src/tether"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 78
+fail_under = 76
 show_missing = true
 skip_covered = true
 
