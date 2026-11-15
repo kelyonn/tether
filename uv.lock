@@ -2107,11 +2107,11 @@ eval = [
 requires-dist = [
     { name = "anthropic", marker = "extra == 'eval'", specifier = ">=2.6,<3" },
     { name = "mcp", specifier = ">=2.3,<3" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "playwright", marker = "extra == 'e2e'", specifier = ">=1.45" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=2.4.1" },
+    { name = "playwright", marker = "extra == 'e2e'", specifier = ">=1.65.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.2.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.17.4" },
 ]
 provides-extras = ["dev", "e2e", "eval"]
 
