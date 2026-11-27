@@ -23,7 +23,7 @@ Homepage = "https://github.com/kelyonn/tether"
 Issues = "https://github.com/kelyonn/tether/issues"
 
 [project.optional-dependencies]
-dev = ["pytest>=9.2.0", "pytest-cov>=7.1.0", "ruff>=0.17.4", "mypy>=2.4.1"]
+dev = ["pytest>=9.2.0", "pytest-cov>=7.1.0", "ruff>=0.17.6", "mypy>=2.4.1"]
 # browser tests for the live view: pip install -e ".[e2e]" && playwright install chromium
 e2e = ["playwright>=1.65.0"]
 # `tether eval` (rule-following eval against the Claude API)
